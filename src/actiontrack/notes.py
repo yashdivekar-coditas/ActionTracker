@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import List, Optional, Tuple, Union
 
+from actiontrack.dates import resolve_due
+
 _TITLE = re.compile(r"^#\s+(?:Meeting:\s*)?(?P<title>.+?)\s*$")
 # `Date:`, `**Date:**` and `**Date**:` headers.
 _DATE = re.compile(r"^\s*(?:\*\*)?Date(?::\*\*|\*\*:|:)\s*(?P<value>.+?)\s*$", re.IGNORECASE)
@@ -29,6 +31,12 @@ _OWNER_SPLIT = re.compile(r"\s+to\s+")
 # The last " by " or " before " starts the due phrase, so "sorted by date by Friday" keeps its task
 # intact. "by" is dropped; "before" stays in the phrase, which the date resolver then leaves unresolved.
 _DUE_SPLIT = re.compile(r"\s+(?:by\s+|(?=before\s))(?!.*\s+(?:by|before)\s)")
+# Markers that start a due phrase only when what follows resolves to a date: "schedule it for Saturday 10 Oct",
+# but "send the invoice for finance" keeps "for finance". "results due" and "due by/on" are tried as one marker.
+_DUE_MARKER = re.compile(r"\s+(?:results\s+)?(?:due(?:\s+(?:by|on))?|for|on)\s+", re.IGNORECASE)
+_TRAILING_WORDS = 5  # longest bare due phrase tried at the end of a task ("end of next week")
+# shortcut: resolvability is checked against a fixed leap-year date, so a yearless 29 Feb counts as a date; revisit if that bites.
+_PROBE = date(2024, 1, 1)
 # An owner phrase reads like names: capitalised words or initials ("Priya", "Priya N."), joined by
 # "&" or "and", with an optional "(with ...)" helper: "Anita & Rahul", "Lena (with Priya)".
 _NAME = r"[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*)*"
@@ -205,12 +213,29 @@ def _item_line(text: str, done: bool, line: int) -> ItemLine:
         owner, task = _split_once(_OWNER_SPLIT, text)
         if owner is None or not _NAME_LIKE.match(owner):
             owner, task = None, text
-    before_due, due = _split_once(_DUE_SPLIT, task)
-    if before_due is None:
-        due = None
-    else:
-        task = before_due.rstrip(" \t,;:-\u2013\u2014")
+    task, due = _split_due(task)
     return ItemLine(owner=owner, task=task, due=due, done=done, line=line)
+
+
+def _split_due(task: str) -> Tuple[str, Optional[str]]:
+    """(task, raw due phrase). A marker that resolves wins; then by/before, whose phrase is kept even when
+    unresolved (it gets flagged); then a bare date phrase ending the task ("fix build, EOD")."""
+    for marker in _DUE_MARKER.finditer(task):
+        if resolve_due(task[marker.end():], _PROBE):
+            return _trim(task[: marker.start()]), task[marker.end():]
+    head, due = _split_once(_DUE_SPLIT, task)
+    if head is not None:
+        return _trim(head), due
+    words = task.split()
+    for size in range(min(_TRAILING_WORDS, len(words) - 1), 0, -1):
+        phrase = " ".join(words[-size:])
+        if resolve_due(phrase, _PROBE):
+            return _trim(" ".join(words[:-size])), phrase
+    return task, None
+
+
+def _trim(task: str) -> str:
+    return task.rstrip(" \t,;:-\u2013\u2014")
 
 
 def _split_once(pattern: re.Pattern, text: str) -> Tuple[Optional[str], str]:

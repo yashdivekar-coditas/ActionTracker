@@ -96,6 +96,30 @@ def test_due_phrase_is_split_off_the_task_including_a_before_phrase_and_dash_sep
     assert (second.task, second.due) == ("send the quote", "end of next week")
 
 
+DUE_WITHOUT_BY = [
+    ("Priya to circulate the summary tomorrow", "circulate the summary", "tomorrow"),
+    ("Priya to fix build, EOD", "fix build", "EOD"),
+    ("Priya to ship it today", "ship it", "today"),
+    ("Priya to send the deck end of next week", "send the deck", "end of next week"),
+    ("Sam to schedule cutover for Saturday 10 Oct", "schedule cutover", "Saturday 10 Oct"),
+    ("Sam to send the report, results due 15 October", "send the report", "15 October"),
+    ("Sam to send the report due 2026-10-15", "send the report", "2026-10-15"),
+    ("Sam to send the report due by Friday", "send the report", "Friday"),
+    ("Sam to send the report due on Friday", "send the report", "Friday"),
+    ("Sam to demo the build on Friday", "demo the build", "Friday"),
+    ("Sam to send the invoice for finance", "send the invoice for finance", None),
+    ("Sam to rebuild the index on the new server", "rebuild the index on the new server", None),
+    ("Sam to write it up", "write it up", None),
+]
+
+
+@pytest.mark.parametrize("text, task, due", DUE_WITHOUT_BY)
+def test_due_phrase_is_found_without_a_by_marker_only_when_it_resolves(text, task, due):
+    (item,) = parse_note(f"Date: 2026-09-01\n- [ ] {text}\n").items
+
+    assert (item.task, item.due) == (task, due)
+
+
 HEADER_STYLES = {
     "plain": "# Sync\nDate: {d}\nAttendees: Priya Nair, Rahul Mehta\n",
     "bold": "# Sync\n**Date:** {d}\n**Attendees:** Priya Nair, Rahul Mehta\n",
