@@ -39,7 +39,7 @@ def resolve_owners(
         if word in GROUP_WORDS:
             matches = attendees
         else:
-            matches = _matching(part.strip(), candidates)
+            matches = sorted(_matching(part.strip(), candidates))
             if not matches:  # nobody matches: keep the name as written
                 matches = [part.strip()]
             elif len(matches) > 1:
