@@ -30,12 +30,12 @@ def best_match(
     task: str, owner_names: Iterable[str], items: Iterable[ActionItem]
 ) -> Optional[Tuple[ActionItem, float]]:
     """The most similar item sharing an Owner (or an Ambiguous candidate) with the new line, with its score.
-    Unowned items only match other Unowned ones."""
+    Unowned items never match anything, each other included."""
     owners = set(owner_names)
     best: Optional[Tuple[ActionItem, float]] = None
     for item in items:
         theirs = {o.name for o in item.owners}
-        if (owners & theirs) or not (owners or theirs):
+        if owners & theirs:
             score = max(similarity(task, wording) for wording in [item.task] + item.aliases)
             if best is None or score > best[1]:
                 best = (item, score)
