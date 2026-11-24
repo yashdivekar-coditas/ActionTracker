@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from datetime import date
 from pathlib import Path
 from typing import List, Optional, Sequence
 
 from actiontrack.ingest import ingest_folder
-from actiontrack.model import ActionItem
+from actiontrack.model import ActionItem, Owner
 from actiontrack.people import PeopleError, load_people
 from actiontrack.store import Store
 
@@ -15,7 +17,10 @@ EXIT_OK, EXIT_ERROR = 0, 1
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = _parser().parse_args(argv)
+    try:
+        args = _parser().parse_args(argv)
+    except SystemExit as exit_:  # argparse exits 2 on a usage error and 0 for --help
+        return exit_.code or 0
     try:
         people = load_people(args.people)
     except PeopleError as exc:
@@ -40,9 +45,39 @@ def _ingest(args, store: Store, people) -> int:
 
 
 def _list(args, store: Store, people) -> int:
-    items = store.items(needs_review=args.needs_review)
-    print(_table(items, with_review=args.needs_review))
+    today = args.today or date.today()
+    items = store.items(
+        needs_review=args.needs_review,
+        owner=args.owner,
+        status=args.status,
+        due_before=args.due_before,
+        today=today,
+    )
+    if args.json:
+        print(json.dumps([_as_dict(item, today) for item in items], indent=2))
+    else:
+        print(_table(items, with_review=args.needs_review))
     return EXIT_OK
+
+
+def _as_dict(item: ActionItem, today: date) -> dict:
+    return {
+        "id": item.id,
+        "task": item.task,
+        "status": item.status,
+        "overdue": item.status == "open" and item.due is not None and item.due < today,
+        "due": item.due.isoformat() if item.due else None,
+        "owners": [{"name": o.name, "confirmed": o.confirmed} for o in item.owners],
+        "sources": [],  # ticket 06 stores Sources; list them here
+        "flags": [{"kind": f.kind, "detail": f.detail} for f in item.flags],
+    }
+
+
+def _date(text: str) -> date:
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid date {text!r}, expected YYYY-MM-DD")
 
 
 def _table(items: List[ActionItem], with_review: bool) -> str:
@@ -54,12 +89,16 @@ def _table(items: List[ActionItem], with_review: bool) -> str:
     )
 
 
+def _owner_cell(owner: Owner) -> str:
+    return owner.name if owner.confirmed else f"{owner.name} (unconfirmed)"
+
+
 def _row(item: ActionItem, with_review: bool) -> List[str]:
     row = [
         str(item.id),
         item.status,
         item.due.isoformat() if item.due else "-",
-        ", ".join(owner.name for owner in item.owners) or "-",
+        ", ".join(_owner_cell(owner) for owner in item.owners) or "-",
         item.task,
     ]
     if with_review:
@@ -81,6 +120,11 @@ def _parser() -> argparse.ArgumentParser:
 
     list_ = commands.add_parser("list", parents=[common], help="show action items")
     list_.add_argument("--needs-review", action="store_true", help="only items flagged for review, with the reason")
+    list_.add_argument("--owner", help="first name (every match), full name (exact) or 'none' (Unowned)")
+    list_.add_argument("--status", choices=["open", "done", "overdue"], help="only items with this status")
+    list_.add_argument("--due-before", type=_date, metavar="DATE", help="only items due before DATE (YYYY-MM-DD)")
+    list_.add_argument("--today", type=_date, metavar="DATE", help="pin today's date (YYYY-MM-DD)")
+    list_.add_argument("--json", action="store_true", help="machine-readable output")
     list_.set_defaults(command=_list)
     return parser
 

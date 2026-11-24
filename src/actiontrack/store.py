@@ -67,7 +67,25 @@ class Store:
         )
         return item_id
 
-    def items(self, needs_review: bool = False) -> List[ActionItem]:
+    def items(
+        self,
+        needs_review: bool = False,
+        owner: Optional[str] = None,
+        status: Optional[str] = None,
+        due_before: Optional[date] = None,
+        today: Optional[date] = None,
+    ) -> List[ActionItem]:
+        """Items matching every given filter; Overdue (open, due before today) is derived here, never stored."""
+        today = today or date.today()
+        return [
+            item
+            for item in self._all_items(needs_review)
+            if (owner is None or _owned_by(item, owner))
+            and (status is None or _has_status(item, status, today))
+            and (due_before is None or (item.due is not None and item.due < due_before))
+        ]
+
+    def _all_items(self, needs_review: bool) -> List[ActionItem]:
         sql = "SELECT id, task, due, status FROM items"
         if needs_review:
             sql += " WHERE id IN (SELECT item_id FROM flags)"
@@ -86,3 +104,21 @@ class Store:
             if item_id in items:
                 items[item_id].flags.append(Flag(kind, detail))
         return list(items.values())
+
+
+def _has_status(item: ActionItem, wanted: str, today: date) -> bool:
+    if wanted == "overdue":  # open items past their Due Date; "open" still includes them
+        return item.status == "open" and item.due is not None and item.due < today
+    return item.status == wanted
+
+
+def _owned_by(item: ActionItem, wanted: str) -> bool:
+    """'none' matches Unowned; a first name matches every person with it; a full name matches exactly."""
+    wanted = wanted.strip().casefold()
+    if wanted == "none":
+        return not item.owners
+    full = " " in wanted
+    return any(
+        (o.name.casefold() == wanted) if full else (o.name.casefold().split()[:1] == [wanted])
+        for o in item.owners
+    )

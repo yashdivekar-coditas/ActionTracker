@@ -28,8 +28,12 @@ _MONTH_DAY_YEAR = re.compile(r"^([A-Za-z]{3,})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\
 _OWNER_SPLIT = re.compile(r"\s+to\s+")
 # Only the last " by " starts the due phrase, so "sorted by date by Friday" keeps its task intact.
 _DUE_SPLIT = re.compile(r"\s+by\s+(?!.*\s+by\s+)")
-# An owner phrase reads like a name: capitalised words or initials ("Priya", "Priya N.").
-_NAME_LIKE = re.compile(r"^[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*)*$")
+# An owner phrase reads like names: capitalised words or initials ("Priya", "Priya N."), joined by
+# "&" or "and", with an optional "(with ...)" helper: "Anita & Rahul", "Lena (with Priya)".
+_NAME = r"[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*)*"
+_NAME_LIKE = re.compile(rf"^{_NAME}(?:\s+(?:&|and)\s+{_NAME})*(?:\s*\(with\s+[^)]+\))?$")
+# "Anita: task" and "@anita: task"
+_COLON_OWNER = re.compile(rf"^(?:@(?P<handle>\w+)|(?P<name>{_NAME})):\s+(?P<task>.+)$")
 
 
 @dataclass(frozen=True)
@@ -194,9 +198,12 @@ def _table_item(cells: List[str], columns: Optional[dict], line: int) -> Optiona
 
 
 def _item_line(text: str, done: bool, line: int) -> ItemLine:
-    owner, task = _split_once(_OWNER_SPLIT, text)
-    if owner is None or not _NAME_LIKE.match(owner):
-        owner, task = None, text
+    if match := _COLON_OWNER.match(text):
+        owner, task = match["handle"] or match["name"], match["task"]
+    else:
+        owner, task = _split_once(_OWNER_SPLIT, text)
+        if owner is None or not _NAME_LIKE.match(owner):
+            owner, task = None, text
     before_due, due = _split_once(_DUE_SPLIT, task)
     if before_due is None:
         due = None
