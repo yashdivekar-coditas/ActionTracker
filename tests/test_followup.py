@@ -28,12 +28,13 @@ TODAY = ["--today", "2026-09-10"]
 
 
 class RecordingSink(DraftSink):
-    def __init__(self, fail: bool = False):
+    def __init__(self, fail: bool = False, fail_on: int = 0):
         self.drafts = []
         self.fail = fail
+        self.fail_on = fail_on  # the 1-based draft that fails
 
     def create_draft(self, email):
-        if self.fail:
+        if self.fail or len(self.drafts) + 1 == self.fail_on:
             raise DraftError("gmail unavailable")
         self.drafts.append(email)
         return f"draft-{len(self.drafts)}"
@@ -157,6 +158,16 @@ def test_sink_failure_is_an_error_exit(ws):
     code, _, err = followup(ws, RecordingSink(fail=True), "Rahul", "--yes")
 
     assert code == 1 and "gmail unavailable" in err
+
+
+def test_a_failure_part_way_lists_which_owners_have_drafts_and_which_do_not(ws):
+    seeded(ws)
+
+    code, _, err = followup(ws, RecordingSink(fail_on=3), "--yes")
+
+    assert code == 1 and "gmail unavailable" in err
+    assert "drafts already created: Anita Desai, Priya Nair" in err
+    assert "not created: Priya Shah, Rahul Mehta" in err
 
 
 def test_nothing_open_means_no_email(ws):

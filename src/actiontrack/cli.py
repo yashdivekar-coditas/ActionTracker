@@ -105,11 +105,16 @@ def _followup(args, store: Store, people) -> int:
         if answer.strip().casefold() not in ("y", "yes"):
             print("nothing created")
             return EXIT_OK
+    names = {address: name for name, address in people.items()}
+    done = 0
     try:
         for email in emails:
             args.sink.create_draft(email)
+            done += 1
     except DraftError as exc:
+        label = lambda batch: ", ".join(names.get(e.to, e.to) for e in batch) or "none"
         print(f"error: {exc}", file=sys.stderr)
+        print(f"drafts already created: {label(emails[:done])}; not created: {label(emails[done:])}", file=sys.stderr)
         return EXIT_ERROR
     print(f"Created {len(emails)} drafts.")
     return EXIT_OK
