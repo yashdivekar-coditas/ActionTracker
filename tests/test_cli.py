@@ -235,7 +235,7 @@ def test_unresolved_due_phrase_leaves_no_due_date_and_is_flagged_with_the_phrase
         "- [ ] Priya to draft the test plan by end of next week\n",
     )
 
-    assert ws.ingest()[1].strip() == "1 notes read, 2 new items, 1 need review"
+    assert ws.ingest()[1].strip() == "1 notes read, 0 skipped, 2 new items, 0 merged, 1 need review"
     _, out, _ = ws.run("list", "--needs-review")
 
     assert out.splitlines() == [
