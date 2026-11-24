@@ -113,12 +113,14 @@ def _has_status(item: ActionItem, wanted: str, today: date) -> bool:
 
 
 def _owned_by(item: ActionItem, wanted: str) -> bool:
-    """'none' matches Unowned; a first name matches every person with it; a full name matches exactly."""
-    wanted = wanted.strip().casefold()
-    if wanted == "none":
+    """'none' matches Unowned; otherwise any Owner matching `wanted` (see matches_name)."""
+    if wanted.strip().casefold() == "none":
         return not item.owners
-    full = " " in wanted
-    return any(
-        (o.name.casefold() == wanted) if full else (o.name.casefold().split()[:1] == [wanted])
-        for o in item.owners
-    )
+    return any(matches_name(o.name, wanted) for o in item.owners)
+
+
+def matches_name(name: str, wanted: str) -> bool:
+    """A first name matches every person with it; a full name matches exactly."""
+    wanted = wanted.strip().casefold()
+    name = name.casefold()
+    return name == wanted if " " in wanted else name.split()[:1] == [wanted]

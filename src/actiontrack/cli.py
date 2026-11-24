@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import List, Optional, Sequence
 
+from actiontrack.followup import DraftError, DraftSink, PrintSink, compose_all, format_email
 from actiontrack.ingest import ingest_folder
 from actiontrack.model import ActionItem, Owner
 from actiontrack.people import PeopleError, load_people
@@ -16,7 +17,8 @@ from actiontrack.store import Store
 EXIT_OK, EXIT_ERROR = 0, 1
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Optional[Sequence[str]] = None, sink: Optional[DraftSink] = None) -> int:
+    """`sink` receives Follow-up Drafts; tests pass a recording one."""
     try:
         args = _parser().parse_args(argv)
     except SystemExit as exit_:  # argparse exits 2 on a usage error and 0 for --help
@@ -27,6 +29,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     with Store(args.db) as store:
+        args.sink = sink or PrintSink()  # ticket 10 makes the Claude/Gmail adapter the default
         return args.command(args, store, people)
 
 
@@ -57,6 +60,37 @@ def _list(args, store: Store, people) -> int:
         print(json.dumps([_as_dict(item, today) for item in items], indent=2))
     else:
         print(_table(items, with_review=args.needs_review))
+    return EXIT_OK
+
+
+def _followup(args, store: Store, people) -> int:
+    today = args.today or date.today()
+    emails, skipped = compose_all(store.items(status="open", today=today), people, today, args.owner)
+    for name in skipped:
+        print(f"skipped {name}: no email address in the people directory", file=sys.stderr)
+    if not emails:
+        print("no follow-ups to create")
+        return EXIT_OK
+    for email in emails:
+        print(format_email(email))
+        print("-" * 40)
+    if args.dry_run:
+        return EXIT_OK
+    if not args.yes:
+        try:
+            answer = input(f"Create {len(emails)} drafts? [y/N] ")
+        except EOFError:
+            answer = ""
+        if answer.strip().casefold() not in ("y", "yes"):
+            print("nothing created")
+            return EXIT_OK
+    try:
+        for email in emails:
+            args.sink.create_draft(email)
+    except DraftError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    print(f"Created {len(emails)} drafts.")
     return EXIT_OK
 
 
@@ -126,6 +160,13 @@ def _parser() -> argparse.ArgumentParser:
     list_.add_argument("--today", type=_date, metavar="DATE", help="pin today's date (YYYY-MM-DD)")
     list_.add_argument("--json", action="store_true", help="machine-readable output")
     list_.set_defaults(command=_list)
+
+    followup = commands.add_parser("followup", parents=[common], help="compose follow-up emails and save them as Gmail drafts")
+    followup.add_argument("owner", nargs="?", help="only this owner (first name or full name)")
+    followup.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    followup.add_argument("--dry-run", action="store_true", help="print the emails and stop")
+    followup.add_argument("--today", type=_date, metavar="DATE", help="pin today's date (YYYY-MM-DD)")
+    followup.set_defaults(command=_followup)
     return parser
 
 
