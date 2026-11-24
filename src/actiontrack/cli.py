@@ -31,7 +31,7 @@ def main(argv: Optional[Sequence[str]] = None, sink: Optional[DraftSink] = None)
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     with Store(args.db) as store:
-        args.sink = sink or ClaudeSink()
+        args.sink = sink
         return args.command(args, store, people)
 
 
@@ -105,11 +105,12 @@ def _followup(args, store: Store, people) -> int:
         if answer.strip().casefold() not in ("y", "yes"):
             print("nothing created")
             return EXIT_OK
+    sink = args.sink or ClaudeSink()  # built only when a real draft is about to be made
     names = {address: name for name, address in people.items()}
     done = 0
     try:
         for email in emails:
-            args.sink.create_draft(email)
+            sink.create_draft(email)
             done += 1
     except DraftError as exc:
         label = lambda batch: ", ".join(names.get(e.to, e.to) for e in batch) or "none"
