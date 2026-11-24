@@ -6,7 +6,8 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable, List, Optional
 
-from actiontrack.model import ActionItem, Flag, Owner, Source
+from actiontrack.model import POSSIBLE_DUPLICATE, ActionItem, Flag, Owner, Source
+from actiontrack.owners import matches_name
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
@@ -147,12 +148,12 @@ class Store:
                 self.add_alias(into.id, task)
         self._db.execute("DELETE FROM items WHERE id = ?", (gone.id,))
         self._db.execute(
-            "DELETE FROM flags WHERE kind = 'possible-duplicate' AND ((item_id = ? AND detail = ?) OR (item_id = ? AND detail = ?))",
-            (into.id, f"#{gone.id}", into.id, f"#{into.id}"),
+            "DELETE FROM flags WHERE kind = ? AND ((item_id = ? AND detail = ?) OR (item_id = ? AND detail = ?))",
+            (POSSIBLE_DUPLICATE, into.id, f"#{gone.id}", into.id, f"#{into.id}"),
         )
         self._db.execute(
-            "UPDATE OR IGNORE flags SET detail = ? WHERE kind = 'possible-duplicate' AND detail = ?",
-            (f"#{into.id}", f"#{gone.id}"),
+            "UPDATE OR IGNORE flags SET detail = ? WHERE kind = ? AND detail = ?",
+            (f"#{into.id}", POSSIBLE_DUPLICATE, f"#{gone.id}"),
         )
 
     def note_hash(self, name: str) -> Optional[str]:
@@ -219,14 +220,7 @@ def _has_status(item: ActionItem, wanted: str, today: date) -> bool:
 
 
 def _owned_by(item: ActionItem, wanted: str) -> bool:
-    """'none' matches Unowned; otherwise any Owner matching `wanted` (see matches_name)."""
+    """'none' matches Unowned; otherwise any Owner matching `wanted` (see owners.matches_name)."""
     if wanted.strip().casefold() == "none":
         return not item.owners
     return any(matches_name(o.name, wanted) for o in item.owners)
-
-
-def matches_name(name: str, wanted: str) -> bool:
-    """A first name matches every person with it; a full name matches exactly."""
-    wanted = wanted.strip().casefold()
-    name = name.casefold()
-    return name == wanted if " " in wanted else name.split()[:1] == [wanted]

@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Mapping, Optional
 
-from actiontrack.model import Flag, Owner
+from actiontrack.model import AMBIGUOUS_OWNER, UNKNOWN_OWNER, UNOWNED, Flag, Owner
 
 # Fixed word lists, in one place. Compared case-insensitively.
 GROUP_WORDS = frozenset({"everyone", "team", "all"})
@@ -43,15 +43,15 @@ def resolve_owners(
             if not matches:  # nobody matches: keep the name as written
                 matches = [part.strip()]
             elif len(matches) > 1:
-                flags.append(Flag("ambiguous-owner", part.strip()))
+                flags.append(Flag(AMBIGUOUS_OWNER, part.strip()))
         confirmed = len(matches) == 1 or word in GROUP_WORDS
         for name in matches:
             owners.setdefault(name, Owner(name, confirmed))
     if not owners:
-        flags.append(Flag("unowned"))
+        flags.append(Flag(UNOWNED))
     unknown = [name for name in owners if name not in people]
     if unknown:
-        flags.append(Flag("unknown-owner", ", ".join(unknown)))
+        flags.append(Flag(UNKNOWN_OWNER, ", ".join(unknown)))
     return Resolution(owners=list(owners.values()), flags=flags)
 
 
@@ -66,3 +66,10 @@ def _matching(phrase: str, names: Iterable[str]) -> List[str]:
         and len(wanted) <= len(have)
         and all(w and h.startswith(w) for w, h in zip(wanted[1:], have[1:]))
     ]
+
+
+def matches_name(name: str, wanted: str) -> bool:
+    """A first name matches every person with it; a full name matches exactly."""
+    wanted = wanted.strip().casefold()
+    name = name.casefold()
+    return name == wanted if " " in wanted else name.split()[:1] == [wanted]

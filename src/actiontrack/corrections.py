@@ -4,11 +4,11 @@ from __future__ import annotations
 from datetime import date
 from typing import Mapping, Optional, Sequence
 
-from actiontrack.model import ActionItem, Flag, Owner
+from actiontrack.model import AMBIGUOUS_OWNER, UNKNOWN_OWNER, UNOWNED, UNRESOLVED_DUE, ActionItem, Flag, Owner
 from actiontrack.store import Store
 
 # the review flags each corrected field settles
-_CLEARS = {"owner": {"ambiguous-owner", "unknown-owner", "unowned"}, "due": {"unresolved-due"}}
+_CLEARS = {"owner": {AMBIGUOUS_OWNER, UNKNOWN_OWNER, UNOWNED}, "due": {UNRESOLVED_DUE}}
 
 
 class CorrectionError(Exception):
@@ -60,7 +60,7 @@ def edit_item(
         item.flags = [f for f in item.flags if f.kind not in _CLEARS.get(field, ())]
     unknown = [n for n in dict.fromkeys(names) if n not in people]
     if unknown:  # a corrected Owner still has to be someone in the people directory
-        item.flags = sorted(item.flags + [Flag("unknown-owner", ", ".join(unknown))], key=lambda f: f.kind)
+        item.flags = sorted(item.flags + [Flag(UNKNOWN_OWNER, ", ".join(unknown))], key=lambda f: f.kind)
     store.save_item(item)
     return item
 

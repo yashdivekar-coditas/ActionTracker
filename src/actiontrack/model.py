@@ -12,6 +12,14 @@ class Owner:
     confirmed: bool = True
 
 
+# The kinds of review Flag, named once; the Store compares against them too.
+UNOWNED = "unowned"
+AMBIGUOUS_OWNER = "ambiguous-owner"
+UNKNOWN_OWNER = "unknown-owner"
+UNRESOLVED_DUE = "unresolved-due"
+POSSIBLE_DUPLICATE = "possible-duplicate"
+
+
 @dataclass(frozen=True)
 class Flag:
     """Why an Action Item Needs Review."""

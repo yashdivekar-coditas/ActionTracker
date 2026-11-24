@@ -10,7 +10,7 @@ from typing import List, Mapping, Tuple, Union
 from actiontrack.corrections import mark_done
 from actiontrack.dates import resolve_due
 from actiontrack.duplicates import HIGH_SIMILARITY, LOW_SIMILARITY, best_match
-from actiontrack.model import Flag, Owner, Source
+from actiontrack.model import AMBIGUOUS_OWNER, POSSIBLE_DUPLICATE, UNKNOWN_OWNER, UNRESOLVED_DUE, Flag, Owner, Source
 from actiontrack.notes import Malformed, Meeting, parse_note
 from actiontrack.owners import resolve_owners
 from actiontrack.store import Store
@@ -64,7 +64,7 @@ def _ingest_line(store, people, known, name, meeting, line, report, today) -> No
     due = resolve_due(line.due, meeting.date)
     flags = list(resolution.flags)
     if line.due and due is None:
-        flags.append(Flag("unresolved-due", line.due))
+        flags.append(Flag(UNRESOLVED_DUE, line.due))
     match = best_match(line.task, (o.name for o in resolution.owners), store.items(today))
     if match and match[1] >= HIGH_SIMILARITY:
         item = match[0]
@@ -74,7 +74,7 @@ def _ingest_line(store, people, known, name, meeting, line, report, today) -> No
         report.items_merged += 1
         return
     if match and match[1] >= LOW_SIMILARITY:
-        flags.append(Flag("possible-duplicate", f"#{match[0].id}"))
+        flags.append(Flag(POSSIBLE_DUPLICATE, f"#{match[0].id}"))
     store.add_item(line.task, due, line.done, resolution.owners, flags, source, key)
     report.items_new += 1
 
@@ -85,23 +85,22 @@ def _merge(item, owners, line, due, meeting_date, people) -> None:
     if line.done:
         item.status = "done"
     # a note read late (an older meeting added afterwards) must not override a newer Due Date
-    if "due" in item.edited:  # a human's Due Date wins
-        pass
-    elif due is not None and all(meeting_date >= s.date for s in item.sources):
-        item.due = due
-        item.flags = [f for f in item.flags if f.kind != "unresolved-due"]
-    elif line.due and due is None and item.due is None:
-        item.flags = [f for f in item.flags if f.kind != "unresolved-due"] + [Flag("unresolved-due", line.due)]
+    if "due" not in item.edited:  # a human's Due Date wins
+        if due is not None and all(meeting_date >= s.date for s in item.sources):
+            item.due = due
+            item.flags = [f for f in item.flags if f.kind != UNRESOLVED_DUE]
+        elif line.due and due is None and item.due is None:
+            item.flags = [f for f in item.flags if f.kind != UNRESOLVED_DUE] + [Flag(UNRESOLVED_DUE, line.due)]
     unconfirmed = {o.name for o in item.owners if not o.confirmed} if "owner" not in item.edited else set()
     named = {o.name for o in owners if o.confirmed} & unconfirmed
     if named:
         item.owners = [Owner(o.name, True) if o.name in named else o for o in item.owners if o.confirmed or o.name in named]
         if not any(not o.confirmed for o in item.owners):
-            item.flags = [f for f in item.flags if f.kind != "ambiguous-owner"]
+            item.flags = [f for f in item.flags if f.kind != AMBIGUOUS_OWNER]
         unknown = [o.name for o in item.owners if o.name not in people]
-        item.flags = [f for f in item.flags if f.kind != "unknown-owner"]
+        item.flags = [f for f in item.flags if f.kind != UNKNOWN_OWNER]
         if unknown:
-            item.flags.append(Flag("unknown-owner", ", ".join(unknown)))
+            item.flags.append(Flag(UNKNOWN_OWNER, ", ".join(unknown)))
         item.flags.sort(key=lambda f: f.kind)
 
 
