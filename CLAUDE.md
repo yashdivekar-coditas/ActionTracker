@@ -19,6 +19,6 @@ CLI that ingests markdown meeting notes, tracks action items in SQLite, and crea
 - Python 3.9 and the standard library only; `pytest` is the single dev dependency. Start modules with `from __future__ import annotations`.
 - Email leaves the tool only as a Gmail draft. The `claude -p` call allows exactly the Gmail `create_draft` tool and nothing else.
 - Every date calculation takes `today` / the Meeting Date as a parameter, so tests pin dates (`--today` on the CLI).
-- Tests drive two seams only: the CLI (`main(argv)` in-process) and `parse_note(text)`. Fixtures are small notes written in the test; the sample `notes/` folder is only for one smoke test.
+- Tests drive the agreed seams: the CLI (`main(argv)` in-process) and `parse_note(text)`, plus `resolve_due` for tables of date phrases when that is clumsier through the others. The allowed-tools constant is also tested directly (spec, Further Notes). Fixtures are small notes written in the test; the sample `notes/` folder is only for one smoke test.
 - Nothing is tuned to the sample notes: grammar for dates, owners and item forms must be general.
 - `people.json` holds placeholder `example.com` addresses only; this repo is public.

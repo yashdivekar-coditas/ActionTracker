@@ -115,21 +115,24 @@ From the ticket comments in `.scratch/actiontrack/issues/`:
   - Files that are not `*.md` (like `2026-09-19-offsite-draft.txt`) and directories named `*.md` are ignored silently.
 - **Dates**
   - "before ..." phrases are never resolved: no Due Date, flagged `unresolved-due`. Any " before " in a task line counts as a due phrase.
-  - "due <date>" wording ("results due 15 October") is not extracted.
+  - Without "by"/"before", a due phrase is found after "due [by|on]", "for" or "on", or as the last few words of the task ("fix build, EOD"), but only when it resolves to a date; "for finance" stays in the task.
   - "next month" is the same day next month, "end of week" the Friday on or after the meeting, "mid-<month>" the 15th.
   - A weekday/date mismatch ("Wed 16 Sep") trusts the date.
 - **Owners**
   - Everyone/Team with no attendee list leaves the item Unowned.
   - A name matching no attendee is kept as written and flagged `unknown-owner`.
-  - `edit --owner` accepts any non-blank name (not checked against `people.json`).
+  - `edit --owner` accepts any non-blank name; one missing from `people.json` is flagged `unknown-owner`.
 - **Duplicates**
   - Thresholds (`HIGH_SIMILARITY = 0.85`, `LOW_SIMILARITY = 0.6`) were picked from hand-made examples, not tuned on `notes/`. Two different tasks by one Owner can merge (see [ADR 0002](docs/adr/0002-duplicates-merge-by-owner-and-fuzzy-task.md)); Sources are kept so merges can be audited.
   - Lines removed from a note leave their item behind.
+  - Notes are identified by file name, so two folders with a same-named note are treated as one.
+  - A later single-owner repeat can merge into a group item and close it for the whole group.
   - A note added later with an earlier Meeting Date merges but does not override a newer Due Date.
   - `merge` keeps the target's owners, due date and flags; edits on the merged-away item are not carried over.
   - Edited owners and dates are not re-flagged by later ingests, even if a newer note disagrees; run `edit` again.
+- **Usage:** an invalid date argument (`--due`, `--today`, `--due-before`) is a usage error (exit 2).
 - **Storage:** the database schema is not migrated; delete `.actiontrack.db` after upgrading.
-- **Gmail:** one `claude -p` call per email (300 s timeout each), no rollback if a later one fails; earlier drafts stay. The adapter's real-Gmail path has not been verified end to end (see ticket 10's comments).
+- **Gmail:** one `claude -p` call per email (300 s timeout each), no rollback if a later one fails; earlier drafts stay, and the error lists which owners have a draft and which do not. The adapter's real-Gmail path has not been verified end to end (see ticket 10's comments).
 
 ## How I used AI
 
