@@ -179,3 +179,14 @@ def test_nothing_open_means_no_email(ws):
     code, out, _ = followup(ws, sink, "--yes")
 
     assert code == 0 and sink.drafts == [] and "no follow-ups" in out
+
+
+def test_item_seen_in_two_meetings_names_both_sources(ws):  # noqa: F811
+    seeded(ws)
+    ws.note("weekly.md", "# Meeting: Weekly\nDate: 2026-09-08\nAttendees: Priya Nair\n\n- [ ] Priya to send the revised quote to Acme by 2026-09-09\n")
+    assert ws.ingest()[0] == 0
+    sink = RecordingSink()
+
+    assert followup(ws, sink, "Priya Nair", "--yes")[0] == 0
+
+    assert "- send the revised quote to Acme (due 2026-09-09; from kickoff.md, 2026-09-01 and Weekly, 2026-09-08)" in sink.drafts[0].body

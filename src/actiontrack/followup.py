@@ -36,7 +36,7 @@ def format_email(email: Email) -> str:
 def _line(item: ActionItem) -> str:
     due = f"due {item.due.isoformat()}" if item.due else "no due date"
     sources = [str(source) for source in item.sources]
-    detail = f"{due}; from {', '.join(sources)}" if sources else due
+    detail = f"{due}; from {' and '.join(sources)}" if sources else due
     return f"- {item.task} ({detail})"
 
 
