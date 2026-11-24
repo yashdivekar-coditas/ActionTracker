@@ -39,7 +39,7 @@ def _ingest(args, store: Store, people) -> int:
     if not args.folder.is_dir():
         print(f"error: {args.folder} is not a folder", file=sys.stderr)
         return EXIT_ERROR
-    report = ingest_folder(args.folder, store, people)
+    report = ingest_folder(args.folder, store, people, date.today())
     for name, reason in report.skipped:
         print(f"skipped {name}: {reason}", file=sys.stderr)
     print(
@@ -53,11 +53,11 @@ def _ingest(args, store: Store, people) -> int:
 def _list(args, store: Store, people) -> int:
     today = args.today or date.today()
     items = store.items(
+        today,
         needs_review=args.needs_review,
         owner=args.owner,
         status=args.status,
         due_before=args.due_before,
-        today=today,
     )
     if args.json:
         print(json.dumps([_as_dict(item, today) for item in items], indent=2))
@@ -86,7 +86,7 @@ def _correct(action):
 
 def _followup(args, store: Store, people) -> int:
     today = args.today or date.today()
-    emails, skipped = compose_all(store.items(status="open", today=today), people, today, args.owner)
+    emails, skipped = compose_all(store.items(today, status="open"), people, today, args.owner)
     for name in skipped:
         print(f"skipped {name}: no email address in the people directory", file=sys.stderr)
     if not emails:
@@ -125,7 +125,7 @@ def _as_dict(item: ActionItem, today: date) -> dict:
         "id": item.id,
         "task": item.task,
         "status": item.status,
-        "overdue": item.status == "open" and item.due is not None and item.due < today,
+        "overdue": item.is_overdue(today),
         "due": item.due.isoformat() if item.due else None,
         "owners": [{"name": o.name, "confirmed": o.confirmed} for o in item.owners],
         "sources": [

@@ -56,7 +56,7 @@ def compose(owner: str, to: str, items: Iterable[ActionItem], today: date) -> Op
             continue
         if not mine[0].confirmed:
             confirm.append(item)
-        elif item.due is not None and item.due < today:
+        elif item.is_overdue(today):
             overdue.append(item)
         else:
             open_.append(item)

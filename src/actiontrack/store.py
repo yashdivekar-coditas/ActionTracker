@@ -164,14 +164,13 @@ class Store:
 
     def items(
         self,
+        today: date,
         needs_review: bool = False,
         owner: Optional[str] = None,
         status: Optional[str] = None,
         due_before: Optional[date] = None,
-        today: Optional[date] = None,
     ) -> List[ActionItem]:
-        """Items matching every given filter; Overdue (open, due before today) is derived here, never stored."""
-        today = today or date.today()
+        """Items matching every given filter; `today` decides Overdue (see ActionItem.is_overdue)."""
         return [
             item
             for item in self._all_items(needs_review)
@@ -215,7 +214,7 @@ class Store:
 
 def _has_status(item: ActionItem, wanted: str, today: date) -> bool:
     if wanted == "overdue":  # open items past their Due Date; "open" still includes them
-        return item.status == "open" and item.due is not None and item.due < today
+        return item.is_overdue(today)
     return item.status == wanted
 
 

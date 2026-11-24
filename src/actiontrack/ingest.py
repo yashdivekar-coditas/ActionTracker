@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import List, Mapping, Tuple, Union
 
+from actiontrack.corrections import mark_done
 from actiontrack.dates import resolve_due
 from actiontrack.duplicates import HIGH_SIMILARITY, LOW_SIMILARITY, best_match
 from actiontrack.model import Flag, Owner, Source
@@ -24,7 +26,7 @@ class Report:
     needs_review: int = 0
 
 
-def ingest_folder(folder: Path, store: Store, people: Mapping[str, str]) -> Report:
+def ingest_folder(folder: Path, store: Store, people: Mapping[str, str], today: date) -> Report:
     report = Report()
     notes = []  # (file name, content hash, Meeting)
     for path in sorted(folder.glob("*.md")):
@@ -43,27 +45,27 @@ def ingest_folder(folder: Path, store: Store, people: Mapping[str, str]) -> Repo
             report.notes_unchanged += 1
             continue
         for line in meeting.items:
-            _ingest_line(store, people, known, name, meeting, line, report)
+            _ingest_line(store, people, known, name, meeting, line, report, today)
         store.set_note_hash(name, digest)
-    report.needs_review = len(store.items(needs_review=True))
+    report.needs_review = len(store.items(today, needs_review=True))
     return report
 
 
-def _ingest_line(store, people, known, name, meeting, line, report) -> None:
+def _ingest_line(store, people, known, name, meeting, line, report, today) -> None:
     key = f"{line.owner or ''}\t{line.task}\t{line.due or ''}"
     source = Source(name, line.line, meeting.date, meeting.title)
     seen = store.source_item(name, key)
     if seen is not None:  # a line of a changed note that was already read: only its tick can matter
         store.refresh_source(source, key)
         if line.done:
-            _mark_done(store, seen)
+            mark_done(store, seen)
         return
     resolution = resolve_owners(line.owner, meeting.attendees, people, known)
     due = resolve_due(line.due, meeting.date)
     flags = list(resolution.flags)
     if line.due and due is None:
         flags.append(Flag("unresolved-due", line.due))
-    match = best_match(line.task, (o.name for o in resolution.owners), store.items())
+    match = best_match(line.task, (o.name for o in resolution.owners), store.items(today))
     if match and match[1] >= HIGH_SIMILARITY:
         item = match[0]
         _merge(item, resolution.owners, line, due, meeting.date, people)
@@ -75,12 +77,6 @@ def _ingest_line(store, people, known, name, meeting, line, report) -> None:
         flags.append(Flag("possible-duplicate", f"#{match[0].id}"))
     store.add_item(line.task, due, line.done, resolution.owners, flags, source, key)
     report.items_new += 1
-
-
-def _mark_done(store: Store, item_id: int) -> None:
-    item = next(i for i in store.items() if i.id == item_id)
-    item.status = "done"
-    store.save_item(item)
 
 
 def _merge(item, owners, line, due, meeting_date, people) -> None:
