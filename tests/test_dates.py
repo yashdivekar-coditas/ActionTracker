@@ -54,6 +54,8 @@ CASES = [
     (DEC, "05/01", date(2027, 1, 5)),
     (TUE, "15 Aug", date(2026, 8, 15)),  # 17 days back: stays in the meeting's year
     (TUE, "15 Jun", date(2027, 6, 15)),  # 78 days back: rolls forward
+    (date(2026, 12, 10), "mid-October", date(2027, 10, 15)),  # 56 days back: next year
+    (date(2026, 12, 10), "15 Nov", date(2026, 11, 15)),  # 25 days back: this year
     (TUE, "Friday.", date(2026, 9, 4)),
 ]
 

@@ -24,7 +24,7 @@ _MONTH_DAY = re.compile(rf"{_PREFIX}{_MONTH}\s+(?P<day>\d{{1,2}}){_ORDINAL}(?:,?
 _SLASH = re.compile(r"(?P<day>\d{1,2})/(?P<month>\d{1,2})(?:/(?P<year>\d{4}))?")
 
 # A yearless date further back than this is taken to mean next year.
-_ROLL_AFTER = timedelta(days=61)
+_ROLL_AFTER = timedelta(days=31)
 
 
 def resolve_due(phrase: Optional[str], meeting_date: date) -> Optional[date]:
