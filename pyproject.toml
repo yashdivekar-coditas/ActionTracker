@@ -1,0 +1,21 @@
+[project]
+name = "actiontrack"
+version = "0.1.0"
+description = "Track action items from markdown meeting notes and draft follow-up emails"
+requires-python = ">=3.9"
+
+[project.scripts]
+actiontrack = "actiontrack.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
