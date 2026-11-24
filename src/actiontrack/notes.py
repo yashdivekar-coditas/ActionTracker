@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 _TITLE = re.compile(r"^#\s+(?:Meeting:\s*)?(?P<title>.+?)\s*$")
 _DATE = re.compile(r"^Date:\s*(?P<value>.+?)\s*$", re.IGNORECASE)
@@ -33,6 +33,13 @@ class ItemLine:
     line: int
 
 
+@dataclass(frozen=True)
+class Malformed:
+    """A note that cannot be read as a Meeting: it is skipped and reported, never partly ingested."""
+
+    reason: str
+
+
 @dataclass
 class Meeting:
     title: str
@@ -41,7 +48,12 @@ class Meeting:
     items: List[ItemLine] = field(default_factory=list)
 
 
-def parse_note(text: str) -> Meeting:
+def parse_note(text: str) -> Union[Meeting, Malformed]:
+    text = text.lstrip("\ufeff")  # byte-order mark; splitlines() already copes with CRLF
+    if not text.strip():
+        return Malformed("empty file")
+    if "\x00" in text:
+        return Malformed("binary or undecodable file")
     title = ""
     meeting_date: Optional[date] = None
     attendees: List[str] = []
@@ -51,13 +63,22 @@ def parse_note(text: str) -> Meeting:
         if not title and (match := _TITLE.match(text_line)):
             title = match["title"]
         elif meeting_date is None and (match := _DATE.match(text_line)):
-            meeting_date = date.fromisoformat(match["value"])
+            meeting_date = _iso_date(match["value"])
         elif not attendees and (match := _ATTENDEES.match(text_line)):
             attendees = [name.strip() for name in match["value"].split(",") if name.strip()]
         elif match := _CHECKBOX.match(text_line):
             items.append(_item_line(match["text"], done=match["mark"] != " ", line=number))
 
+    if meeting_date is None:
+        return Malformed("no readable Meeting Date")
     return Meeting(title=title, date=meeting_date, attendees=attendees, items=items)
+
+
+def _iso_date(value: str) -> Optional[date]:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None  # a later Date: line may still be readable
 
 
 def _item_line(text: str, done: bool, line: int) -> ItemLine:

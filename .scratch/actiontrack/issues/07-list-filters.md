@@ -4,11 +4,18 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each filter and a combination of two filters return exactly the expected ids
-- [ ] With `--today` pinned, an item due yesterday is overdue and one due today is not
-- [ ] `--json` output parses and contains Owners, Sources, status, due and flags
-- [ ] `--due-before notadate` exits 2 with a message
+- [x] Each filter and a combination of two filters return exactly the expected ids
+- [x] With `--today` pinned, an item due yesterday is overdue and one due today is not
+- [x] `--json` output parses and contains Owners, Sources, status, due and flags
+- [x] `--due-before notadate` exits 2 with a message
 
 Spec: `.scratch/actiontrack/spec.md`
+
+## Comments
+
+- `--json` has `"sources": []` until ticket 06 stores Sources; fill it in `_as_dict` in `cli.py`.
+- Table STATUS column shows the stored status (open/done); overdue is a `--json` boolean and a filter, not a table value.
+- Unconfirmed owners are marked "(unconfirmed)" in the table; no ticket yet produces them (05), so only the JSON `confirmed` flag is tested.
+- `main` now returns argparse's exit code (2 for usage errors) instead of raising SystemExit.

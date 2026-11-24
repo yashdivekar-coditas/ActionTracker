@@ -33,6 +33,9 @@ class Workspace:
     def note(self, name: str, text: str) -> None:
         (self.notes / name).write_text(text, encoding="utf-8")
 
+    def raw_note(self, name: str, data: bytes) -> None:
+        (self.notes / name).write_bytes(data)
+
     def directory(self, people: dict) -> None:
         self.people.write_text(json.dumps(people), encoding="utf-8")
 
@@ -72,7 +75,7 @@ def test_owner_missing_from_people_directory_is_flagged_for_review(ws):
 
     code, out, _ = ws.ingest()
     assert code == 0
-    assert out.strip() == "1 notes read, 2 new items, 1 need review"
+    assert out.strip() == "1 notes read, 0 skipped, 2 new items, 0 merged, 1 need review"
 
     code, out, _ = ws.run("list", "--needs-review")
     assert code == 0
@@ -90,6 +93,137 @@ def test_unreadable_people_directory_is_a_clear_error(ws):
 
     assert code == 1
     assert "must map full names to email addresses" in err
+
+
+def test_malformed_notes_are_skipped_with_distinct_reasons_and_the_rest_still_ingest(ws):
+    ws.directory(EVERYONE)
+    ws.note("kickoff.md", KICKOFF)
+    ws.raw_note("empty.md", b"")
+    ws.raw_note("binary.md", b"\x00\x01\x02Date: 2026-09-01\n- [ ] Priya to x\n")
+    ws.raw_note("latin1.md", b"Date: 2026-09-01\n- [ ] Priya to caf\xe9\n")
+    ws.note("nodate.md", "# Meeting: Standup\n- [ ] Priya to send the quote\n")
+    ws.note("baddate.md", "Date: next Tuesday\n- [ ] Priya to send the quote\n")
+
+    code, out, err = ws.ingest()
+
+    assert code == 0
+    assert sorted(err.splitlines()) == [
+        "skipped baddate.md: no readable Meeting Date",
+        "skipped binary.md: binary or undecodable file",
+        "skipped empty.md: empty file",
+        "skipped latin1.md: binary or undecodable file",
+        "skipped nodate.md: no readable Meeting Date",
+    ]
+    assert out.strip() == "1 notes read, 5 skipped, 2 new items, 0 merged, 0 need review"
+    assert len(ws.run("list")[1].splitlines()) == 3  # header + the two kickoff items
+
+
+def test_non_markdown_files_are_ignored_and_not_reported(ws):
+    ws.directory(EVERYONE)
+    ws.note("kickoff.md", KICKOFF)
+    ws.note("draft.txt", KICKOFF)
+    ws.raw_note("photo.png", b"\x89PNG\x00")
+    (ws.notes / "folder.md").mkdir()
+
+    code, out, err = ws.ingest()
+
+    assert (code, err) == (0, "")
+    assert out.strip() == "1 notes read, 0 skipped, 2 new items, 0 merged, 0 need review"
+
+
+def test_note_with_bom_and_crlf_ingests_like_its_plain_equivalent(ws):
+    ws.directory(EVERYONE)
+    ws.raw_note("kickoff.md", b"\xef\xbb\xbf" + KICKOFF.replace("\n", "\r\n").encode("utf-8"))
+
+    code, out, err = ws.ingest()
+
+    assert (code, err) == (0, "")
+    assert ws.run("list")[1].splitlines() == [
+        "ID  STATUS  DUE         OWNER        TASK",
+        "1   open    2026-09-08  Priya Nair   send the revised quote to Acme",
+        "2   done    -           Rahul Mehta  set up the staging environment",
+    ]
+
+
+FILTERS = """\
+# Meeting: Planning
+Date: 2026-09-01
+Attendees: Priya Nair, Rahul Mehta
+
+- [ ] Priya Nair to send the quote by 2026-09-08
+- [x] Rahul Mehta to set up staging by 2026-09-02
+- [ ] Rahul Mehta to review the PR by 2026-09-10
+- [ ] Priya Shah to book the venue by 2026-09-09
+- [ ] Draft the agenda
+- [ ] Rahul Mehta to fix the build
+"""
+
+
+@pytest.fixture
+def filtered(ws):
+    ws.directory({"Priya Nair": "pn@example.com", "Rahul Mehta": "rm@example.com"})
+    ws.note("planning.md", FILTERS)
+    ws.ingest()
+    return ws
+
+
+def listed(ws, *args):
+    code, out, _ = ws.run("list", "--today", "2026-09-09", *args)
+    assert code == 0
+    return [int(line.split()[0]) for line in out.splitlines()[1:]]
+
+
+@pytest.mark.parametrize(
+    "args, expected",
+    [
+        (["--owner", "Priya"], [1, 4]),
+        (["--owner", "priya nair"], [1]),
+        (["--owner", "none"], [5]),
+        (["--status", "open"], [1, 3, 4, 5, 6]),
+        (["--status", "done"], [2]),
+        (["--status", "overdue"], [1]),  # due 09-09 is not overdue on 09-09
+        (["--due-before", "2026-09-10"], [1, 2, 4]),
+        (["--needs-review"], [4]),
+        (["--owner", "Rahul", "--status", "open"], [3, 6]),
+        (["--owner", "Priya", "--due-before", "2026-09-09"], [1]),
+    ],
+)
+def test_list_filters_return_exactly_the_expected_items(filtered, args, expected):
+    assert listed(filtered, *args) == expected
+
+
+def test_item_due_yesterday_is_overdue_and_due_today_is_not(filtered):
+    assert listed(filtered, "--status", "overdue") == [1]
+    code, out, _ = filtered.run("list", "--today", "2026-09-10", "--status", "overdue")
+    assert [int(line.split()[0]) for line in out.splitlines()[1:]] == [1, 4]
+
+
+def test_json_lists_owners_sources_status_due_and_flags(filtered):
+    code, out, _ = filtered.run("list", "--json", "--today", "2026-09-09", "--needs-review")
+
+    assert code == 0
+    assert json.loads(out) == [
+        {
+            "id": 4,
+            "task": "book the venue",
+            "status": "open",
+            "overdue": False,
+            "due": "2026-09-09",
+            "owners": [{"name": "Priya Shah", "confirmed": True}],
+            "sources": [],
+            "flags": [{"kind": "unknown-owner", "detail": "Priya Shah"}],
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "args", [["--due-before", "notadate"], ["--today", "31/02/2026"], ["--status", "late"]]
+)
+def test_invalid_filter_values_are_a_usage_error(filtered, args):
+    code, _, err = filtered.run("list", *args)
+
+    assert code == 2
+    assert "usage" in err
 
 
 def test_unresolved_due_phrase_leaves_no_due_date_and_is_flagged_with_the_phrase(ws):
