@@ -89,12 +89,14 @@ def _merge(item, owners, line, due, meeting_date, people) -> None:
     if line.done:
         item.status = "done"
     # a note read late (an older meeting added afterwards) must not override a newer Due Date
-    if due is not None and all(meeting_date >= s.date for s in item.sources):
+    if "due" in item.edited:  # a human's Due Date wins
+        pass
+    elif due is not None and all(meeting_date >= s.date for s in item.sources):
         item.due = due
         item.flags = [f for f in item.flags if f.kind != "unresolved-due"]
     elif line.due and due is None and item.due is None:
         item.flags = [f for f in item.flags if f.kind != "unresolved-due"] + [Flag("unresolved-due", line.due)]
-    unconfirmed = {o.name for o in item.owners if not o.confirmed}
+    unconfirmed = {o.name for o in item.owners if not o.confirmed} if "owner" not in item.edited else set()
     named = {o.name for o in owners if o.confirmed} & unconfirmed
     if named:
         item.owners = [Owner(o.name, True) if o.name in named else o for o in item.owners if o.confirmed or o.name in named]

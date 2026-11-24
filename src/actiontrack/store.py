@@ -10,7 +10,7 @@ from actiontrack.model import ActionItem, Flag, Owner, Source
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
-    id     INTEGER PRIMARY KEY,
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,  -- merged-away ids are never reused
     task   TEXT NOT NULL,
     due    TEXT,
     status TEXT NOT NULL CHECK (status IN ('open', 'done'))
@@ -36,6 +36,17 @@ CREATE TABLE IF NOT EXISTS sources (
     date    TEXT NOT NULL,
     title   TEXT NOT NULL,
     PRIMARY KEY (note, key)
+);
+-- durable record of human decisions, consulted by ingest
+CREATE TABLE IF NOT EXISTS edits (
+    item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    field   TEXT NOT NULL,
+    PRIMARY KEY (item_id, field)
+);
+CREATE TABLE IF NOT EXISTS aliases (
+    item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    task    TEXT NOT NULL,
+    PRIMARY KEY (item_id, task)
 );
 CREATE TABLE IF NOT EXISTS notes (
     name TEXT PRIMARY KEY,
@@ -102,10 +113,10 @@ class Store:
         )
 
     def save_item(self, item: ActionItem) -> None:
-        """Write back an item's due date, status, owners and flags (its task and Sources are not touched)."""
+        """Write back an item's task, due date, status, owners and flags (its Sources are not touched)."""
         self._db.execute(
-            "UPDATE items SET due = ?, status = ? WHERE id = ?",
-            (item.due.isoformat() if item.due else None, item.status, item.id),
+            "UPDATE items SET task = ?, due = ?, status = ? WHERE id = ?",
+            (item.task, item.due.isoformat() if item.due else None, item.status, item.id),
         )
         self._db.execute("DELETE FROM item_owners WHERE item_id = ?", (item.id,))
         self._db.execute("DELETE FROM flags WHERE item_id = ?", (item.id,))
@@ -116,6 +127,32 @@ class Store:
         self._db.executemany(
             "INSERT INTO flags (item_id, kind, detail) VALUES (?, ?, ?)",
             [(item.id, f.kind, f.detail) for f in item.flags],
+        )
+
+    def record_edit(self, item_id: int, field: str) -> None:
+        self._db.execute("INSERT OR IGNORE INTO edits (item_id, field) VALUES (?, ?)", (item_id, field))
+
+    def add_alias(self, item_id: int, task: str) -> None:
+        self._db.execute("INSERT OR IGNORE INTO aliases (item_id, task) VALUES (?, ?)", (item_id, task))
+
+    def get(self, item_id: int) -> Optional[ActionItem]:
+        return next((i for i in self._all_items(False) if i.id == item_id), None)
+
+    def merge_items(self, gone: ActionItem, into: ActionItem) -> None:
+        """Move `gone`'s Sources and wordings onto `into`, delete `gone`, and drop possible-duplicate flags
+        between the two (flags other items held against `gone` now point at `into`)."""
+        self._db.execute("UPDATE sources SET item_id = ? WHERE item_id = ?", (into.id, gone.id))
+        for task in [gone.task] + gone.aliases:
+            if task != into.task:
+                self.add_alias(into.id, task)
+        self._db.execute("DELETE FROM items WHERE id = ?", (gone.id,))
+        self._db.execute(
+            "DELETE FROM flags WHERE kind = 'possible-duplicate' AND ((item_id = ? AND detail = ?) OR (item_id = ? AND detail = ?))",
+            (into.id, f"#{gone.id}", into.id, f"#{into.id}"),
+        )
+        self._db.execute(
+            "UPDATE OR IGNORE flags SET detail = ? WHERE kind = 'possible-duplicate' AND detail = ?",
+            (f"#{into.id}", f"#{gone.id}"),
         )
 
     def note_hash(self, name: str) -> Optional[str]:
@@ -166,6 +203,12 @@ class Store:
         ):
             if item_id in items:
                 items[item_id].sources.append(Source(note, line, date.fromisoformat(day), title))
+        for item_id, field in self._db.execute("SELECT item_id, field FROM edits ORDER BY field"):
+            if item_id in items:
+                items[item_id].edited.append(field)
+        for item_id, task in self._db.execute("SELECT item_id, task FROM aliases ORDER BY rowid"):
+            if item_id in items:
+                items[item_id].aliases.append(task)
         return list(items.values())
 
 

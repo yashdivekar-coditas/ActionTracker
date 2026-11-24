@@ -4,12 +4,19 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `done` then a re-ingest of a note listing the item unticked leaves it Done
-- [ ] `edit --owner "Priya Nair"` on an Ambiguous item leaves one confirmed Owner and no flag, and a re-ingest keeps it
-- [ ] `edit --due` clears `unresolved-due`, and a re-ingest doesn't revert the date
-- [ ] `merge` leaves one item with both items' Sources, and a re-ingest doesn't recreate the merged-away item
-- [ ] Unknown ids exit 1
+- [x] `done` then a re-ingest of a note listing the item unticked leaves it Done
+- [x] `edit --owner "Priya Nair"` on an Ambiguous item leaves one confirmed Owner and no flag, and a re-ingest keeps it
+- [x] `edit --due` clears `unresolved-due`, and a re-ingest doesn't revert the date
+- [x] `merge` leaves one item with both items' Sources, and a re-ingest doesn't recreate the merged-away item
+- [x] Unknown ids exit 1
 
 Spec: `.scratch/actiontrack/spec.md`
+
+## Comments
+
+- Human decisions are stored in two new tables: `edits` (item, field: owner/due/task) and `aliases` (earlier wordings of an item). Ingest's merge skips due-date updates and owner narrowing for fields in `edits`; Done was already sticky. The old DB schema is still not migrated (new tables appear via `CREATE TABLE IF NOT EXISTS`, but `items` only gets `AUTOINCREMENT` in fresh databases).
+- `merge` moves the merged-away item's Sources onto the target (so known lines of changed notes resolve to the target) and keeps its wording as an alias, so a reworded copy of either wording merges into the target instead of recreating it. The target's owners, due date and flags are kept; the merged-away item's human edits are not carried over. Other items' `possible-duplicate #gone` flags are retargeted to the target. `AUTOINCREMENT` stops a merged-away id being reused.
+- `edit --task` keeps the old wording as an alias. `edit --owner` accepts any non-blank name (not checked against people.json or attendees) and clears `ambiguous-owner`, `unknown-owner` and `unowned`; an `edit` with no option exits 2, an unknown id or merging an item into itself exits 1.
+- Edited owners/due are not re-flagged by later ingests, even if a newer note disagrees; the human has to `edit` again.

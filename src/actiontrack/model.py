@@ -45,3 +45,5 @@ class ActionItem:
     owners: List[Owner] = field(default_factory=list)
     flags: List[Flag] = field(default_factory=list)
     sources: List[Source] = field(default_factory=list)
+    edited: List[str] = field(default_factory=list)  # fields a human set (owner, due, task); ingest leaves them alone
+    aliases: List[str] = field(default_factory=list)  # earlier wordings (merged-away or pre-edit) that still match this item
