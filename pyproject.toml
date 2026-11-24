@@ -19,3 +19,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Import the checkout's own src first, so git worktrees can share one venv.
+pythonpath = ["src"]
