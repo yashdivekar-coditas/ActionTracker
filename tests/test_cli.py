@@ -143,3 +143,47 @@ def test_note_with_bom_and_crlf_ingests_like_its_plain_equivalent(ws):
         "1   open    2026-09-08  Priya Nair   send the revised quote to Acme",
         "2   done    -           Rahul Mehta  set up the staging environment",
     ]
+
+
+MIXED = """\
+---
+date: Monday, 14 September 2026
+attendees:
+  - Priya Nair
+  - Rahul Mehta
+---
+# Design review
+
+* [ ] Priya to send the revised quote
+    + [X] Rahul to set up staging
+TODO: Priya to book the room
+> - [ ] Rahul to quote someone else
+
+```
+- [ ] Priya to paste this template
+```
+<!--
+- [ ] Rahul to do the cut item
+-->
+
+| Owner | Task | Due |
+|-------|------|-----|
+| Rahul | Review the PR | 2026-09-18 |
+"""
+
+
+def test_mixed_style_note_yields_every_real_item_and_no_decoys(ws):
+    ws.directory(EVERYONE)
+    ws.note("review.md", MIXED)
+
+    code, out, err = ws.ingest()
+
+    assert (code, err) == (0, "")
+    assert out.strip() == "1 notes read, 0 skipped, 4 new items, 0 merged, 0 need review"
+    assert ws.run("list")[1].splitlines() == [
+        "ID  STATUS  DUE         OWNER        TASK",
+        "1   open    -           Priya Nair   send the revised quote",
+        "2   done    -           Rahul Mehta  set up staging",
+        "3   open    -           Priya Nair   book the room",
+        "4   open    2026-09-18  Rahul Mehta  Review the PR",
+    ]

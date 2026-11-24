@@ -11,9 +11,20 @@ from datetime import date
 from typing import List, Optional, Tuple, Union
 
 _TITLE = re.compile(r"^#\s+(?:Meeting:\s*)?(?P<title>.+?)\s*$")
-_DATE = re.compile(r"^Date:\s*(?P<value>.+?)\s*$", re.IGNORECASE)
-_ATTENDEES = re.compile(r"^Attendees:\s*(?P<value>.*?)\s*$", re.IGNORECASE)
-_CHECKBOX = re.compile(r"^\s*-\s*\[(?P<mark>[ xX])\]\s*(?P<text>.+?)\s*$")
+# `Date:`, `**Date:**` and `**Date**:` headers.
+_DATE = re.compile(r"^\s*(?:\*\*)?Date(?::\*\*|\*\*:|:)\s*(?P<value>.+?)\s*$", re.IGNORECASE)
+_ATTENDEES = re.compile(r"^\s*(?:\*\*)?Attendees(?::\*\*|\*\*:|:)\s*(?P<value>.*?)\s*$", re.IGNORECASE)
+_CHECKBOX = re.compile(r"^\s*[-*+]\s*\[(?P<mark>[ xX])\]\s*(?P<text>.+?)\s*$")
+_ACTION_LINE = re.compile(r"^\s*(?:[-*+]\s+)?(?:ACTION|TODO):\s*(?P<text>.+?)\s*$")
+_FENCE = re.compile(r"^\s*(?:```|~~~)")
+_COMMENT = re.compile(r"<!--.*?-->")
+_SEPARATOR_CELL = re.compile(r"^:?-+:?$")
+_MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+_WEEKDAY = re.compile(r"^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+", re.IGNORECASE)
+_ISO = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
+_DAY_FIRST_SLASH = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
+_DAY_MONTH_YEAR = re.compile(r"^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,})\.?,?\s+(\d{4})$")
+_MONTH_DAY_YEAR = re.compile(r"^([A-Za-z]{3,})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$")
 _OWNER_SPLIT = re.compile(r"\s+to\s+")
 # Only the last " by " starts the due phrase, so "sorted by date by Friday" keeps its task intact.
 _DUE_SPLIT = re.compile(r"\s+by\s+(?!.*\s+by\s+)")
@@ -53,31 +64,133 @@ def parse_note(text: str) -> Union[Meeting, Malformed]:
         return Malformed("empty file")
     if "\x00" in text:
         return Malformed("binary or undecodable file")
-    title = ""
-    meeting_date: Optional[date] = None
-    attendees: List[str] = []
+    lines = _strip_decoys(text.splitlines())
+    front, body_start = _frontmatter(lines)
+    title = front.get("title", "")
+    meeting_date: Optional[date] = _parse_date(front["date"]) if "date" in front else None
+    attendees: List[str] = front.get("attendees", [])
     items: List[ItemLine] = []
+    columns: Optional[dict] = None  # column positions of the table being read, if it holds items
 
-    for number, text_line in enumerate(text.splitlines(), start=1):
+    for number, text_line in enumerate(lines, start=1):
+        if number <= body_start:
+            continue
+        if text_line.lstrip().startswith("|"):
+            cells = _cells(text_line)
+            if columns is None:
+                columns = _table_columns(cells)
+            elif not all(_SEPARATOR_CELL.match(cell) for cell in cells if cell) and (item := _table_item(cells, columns, number)):
+                items.append(item)
+            continue
+        columns = None
         if not title and (match := _TITLE.match(text_line)):
             title = match["title"]
         elif meeting_date is None and (match := _DATE.match(text_line)):
-            meeting_date = _iso_date(match["value"])
+            meeting_date = _parse_date(match["value"])
         elif not attendees and (match := _ATTENDEES.match(text_line)):
-            attendees = [name.strip() for name in match["value"].split(",") if name.strip()]
+            attendees = _names(match["value"])
         elif match := _CHECKBOX.match(text_line):
             items.append(_item_line(match["text"], done=match["mark"] != " ", line=number))
+        elif match := _ACTION_LINE.match(text_line):
+            items.append(_item_line(match["text"], done=False, line=number))
 
     if meeting_date is None:
         return Malformed("no readable Meeting Date")
     return Meeting(title=title, date=meeting_date, attendees=attendees, items=items)
 
 
-def _iso_date(value: str) -> Optional[date]:
+def _strip_decoys(lines: List[str]) -> List[str]:
+    """Blank out blockquotes, fenced code and HTML comments, keeping line numbers stable."""
+    out: List[str] = []
+    fence = comment = False
+    for line in lines:
+        if fence:
+            fence = not _FENCE.match(line)
+            out.append("")
+            continue
+        if comment:
+            end = line.find("-->")
+            comment = end < 0
+            line = "" if comment else line[end + 3:]
+        elif _FENCE.match(line):
+            fence = True
+            out.append("")
+            continue
+        line = _COMMENT.sub("", line)
+        if "<!--" in line:
+            line, comment = line[: line.index("<!--")], True
+        out.append("" if line.lstrip().startswith(">") else line)
+    return out
+
+
+def _frontmatter(lines: List[str]) -> Tuple[dict, int]:
+    """(fields, number of lines used): YAML frontmatter with `date`, `title` and `attendees` (inline or list)."""
+    if not lines or lines[0].strip() != "---":
+        return {}, 0
+    end = next((n for n in range(1, len(lines)) if lines[n].strip() in ("---", "...")), None)
+    if end is None:
+        return {}, 0
+    fields: dict = {}
+    key = ""
+    for line in lines[1:end]:
+        if match := re.match(r"^(\w+):\s*(.*?)\s*$", line):
+            key, value = match[1].lower(), match[2].strip("\"'")
+            if key == "attendees":
+                fields[key] = _names(value.strip("[]"))
+            elif value:
+                fields[key] = value
+        elif key == "attendees" and (match := re.match(r"^\s*-\s+(.+?)\s*$", line)):
+            fields[key].append(match[1].strip("\"'"))
+    return fields, end + 1
+
+
+def _names(value: str) -> List[str]:
+    return [name.strip().strip("\"'") for name in value.split(",") if name.strip()]
+
+
+def _parse_date(value: str) -> Optional[date]:
+    """A Meeting Date as written: ISO, `9 September 2026`, `Sep 9, 2026`, optional weekday, or day-first `09/09/2026`."""
+    value = _WEEKDAY.sub("", value.strip().strip("\"'"))
     try:
-        return date.fromisoformat(value)
+        if match := _ISO.match(value):
+            return date(int(match[1]), int(match[2]), int(match[3]))
+        if match := _DAY_FIRST_SLASH.match(value):
+            return date(int(match[3]), int(match[2]), int(match[1]))
+        if match := _DAY_MONTH_YEAR.match(value):
+            return date(int(match[3]), _month(match[2]), int(match[1]))
+        if match := _MONTH_DAY_YEAR.match(value):
+            return date(int(match[3]), _month(match[1]), int(match[2]))
     except ValueError:
-        return None  # a later Date: line may still be readable
+        pass  # impossible date or unknown month name; a later Date: line may still be readable
+    return None
+
+
+def _month(word: str) -> int:
+    for number, name in enumerate(_MONTHS, start=1):
+        if name.startswith(word.lower()):
+            return number
+    raise ValueError(word)
+
+
+def _cells(line: str) -> List[str]:
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _table_columns(cells: List[str]) -> Optional[dict]:
+    """Column positions of a header row naming an Owner and an Action/Task column (Due optional)."""
+    names = [cell.lower() for cell in cells]
+    find = lambda *words: next((n for n, name in enumerate(names) if name.startswith(words)), None)
+    owner, task, due = find("owner"), find("action", "task"), find("due")
+    return None if owner is None or task is None else {"owner": owner, "task": task, "due": due}
+
+
+def _table_item(cells: List[str], columns: Optional[dict], line: int) -> Optional[ItemLine]:
+    if columns is None:
+        return None
+    cell = lambda key: cells[columns[key]] if columns[key] is not None and columns[key] < len(cells) else ""
+    if not cell("task"):
+        return None
+    return ItemLine(owner=cell("owner") or None, task=cell("task"), due=cell("due") or None, done=False, line=line)
 
 
 def _item_line(text: str, done: bool, line: int) -> ItemLine:
