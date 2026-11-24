@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Mapping, Tuple, Union
 
 from actiontrack.dates import resolve_due
+from actiontrack.model import Flag
 from actiontrack.notes import Malformed, Meeting, parse_note
 from actiontrack.owners import resolve_owners
 from actiontrack.store import Store
@@ -35,15 +36,19 @@ def ingest_folder(folder: Path, store: Store, people: Mapping[str, str]) -> Repo
         report.notes_read += 1
         for line in meeting.items:
             resolution = resolve_owners(line.owner, meeting.attendees, people, known)
+            due = resolve_due(line.due, meeting.date)
+            flags = list(resolution.flags)
+            if line.due and due is None:
+                flags.append(Flag("unresolved-due", line.due))
             store.add_item(
                 task=line.task,
-                due=resolve_due(line.due, meeting.date),
+                due=due,
                 done=line.done,
                 owners=resolution.owners,
-                flags=resolution.flags,
+                flags=flags,
             )
             report.items_new += 1
-            report.needs_review += bool(resolution.flags)
+            report.needs_review += bool(flags)
     return report
 
 

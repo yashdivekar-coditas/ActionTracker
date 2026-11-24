@@ -145,6 +145,49 @@ def test_note_with_bom_and_crlf_ingests_like_its_plain_equivalent(ws):
     ]
 
 
+MIXED = """\
+---
+date: Monday, 14 September 2026
+attendees:
+  - Priya Nair
+  - Rahul Mehta
+---
+# Design review
+
+* [ ] Priya to send the revised quote
+    + [X] Rahul to set up staging
+TODO: Priya to book the room
+> - [ ] Rahul to quote someone else
+
+```
+- [ ] Priya to paste this template
+```
+<!--
+- [ ] Rahul to do the cut item
+-->
+
+| Owner | Task | Due |
+|-------|------|-----|
+| Rahul | Review the PR | 2026-09-18 |
+"""
+
+
+def test_mixed_style_note_yields_every_real_item_and_no_decoys(ws):
+    ws.directory(EVERYONE)
+    ws.note("review.md", MIXED)
+
+    code, out, err = ws.ingest()
+
+    assert (code, err) == (0, "")
+    assert out.strip() == "1 notes read, 0 skipped, 4 new items, 0 merged, 0 need review"
+    assert ws.run("list")[1].splitlines() == [
+        "ID  STATUS  DUE         OWNER        TASK",
+        "1   open    -           Priya Nair   send the revised quote",
+        "2   done    -           Rahul Mehta  set up staging",
+        "3   open    -           Priya Nair   book the room",
+        "4   open    2026-09-18  Rahul Mehta  Review the PR",
+    ]
+
 FILTERS = """\
 # Meeting: Planning
 Date: 2026-09-01
@@ -234,3 +277,23 @@ def test_invalid_filter_values_are_a_usage_error(filtered, args):
 
     assert code == 2
     assert "usage" in err
+
+
+def test_unresolved_due_phrase_leaves_no_due_date_and_is_flagged_with_the_phrase(ws):
+    ws.directory(EVERYONE)
+    ws.note(
+        "cutover.md",
+        "Date: 2026-09-01\nAttendees: Priya Nair, Rahul Mehta\n"
+        "- [ ] Rahul to snapshot the production DB before cutover\n"
+        "- [ ] Priya to draft the test plan by end of next week\n",
+    )
+
+    assert ws.ingest()[1].strip() == "1 notes read, 0 skipped, 2 new items, 0 merged, 1 need review"
+    _, out, _ = ws.run("list", "--needs-review")
+
+    assert out.splitlines() == [
+        "ID  STATUS  DUE  OWNER        TASK                        REVIEW",
+        "1   open    -    Rahul Mehta  snapshot the production DB  unresolved-due: before cutover",
+    ]
+    _, out, _ = ws.run("list")
+    assert "2026-09-11  Priya Nair   draft the test plan" in out
