@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from actiontrack.ingest import ingest_folder
-from actiontrack.model import ActionItem
+from actiontrack.model import ActionItem, Owner
 from actiontrack.people import PeopleError, load_people
 from actiontrack.store import Store
 
@@ -89,12 +89,16 @@ def _table(items: List[ActionItem], with_review: bool) -> str:
     )
 
 
+def _owner_cell(owner: Owner) -> str:
+    return owner.name if owner.confirmed else f"{owner.name} (unconfirmed)"
+
+
 def _row(item: ActionItem, with_review: bool) -> List[str]:
     row = [
         str(item.id),
         item.status,
         item.due.isoformat() if item.due else "-",
-        ", ".join(o.name + ("" if o.confirmed else " (unconfirmed)") for o in item.owners) or "-",
+        ", ".join(_owner_cell(owner) for owner in item.owners) or "-",
         item.task,
     ]
     if with_review:

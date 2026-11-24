@@ -4,12 +4,21 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Two same-first-name attendees with no initial produce one item with both as unconfirmed Owners, flagged `ambiguous-owner`
-- [ ] An initial picks the right one of the two
-- [ ] Each group, helper, nobody and shorthand form above yields the Owners stated
-- [ ] A note without attendees resolves a unique first name from the people directory
-- [ ] `list` marks unconfirmed Owners visibly
+- [x] Two same-first-name attendees with no initial produce one item with both as unconfirmed Owners, flagged `ambiguous-owner`
+- [x] An initial picks the right one of the two
+- [x] Each group, helper, nobody and shorthand form above yields the Owners stated
+- [x] A note without attendees resolves a unique first name from the people directory
+- [x] `list` marks unconfirmed Owners visibly
 
 Spec: `.scratch/actiontrack/spec.md`
+
+## Comments
+
+- Everyone/Team/All with no attendee list leaves the item Unowned (nobody to expand to); the people directory is deliberately not used for groups.
+- With an attendee list, a name matching no attendee is kept as written and flagged `unknown-owner`, even if the people directory knows it (ticket 01's note).
+- `unknown-owner` is one flag per item listing every unknown name (flags are keyed by kind).
+- Owner phrase grammar stays limited to checkbox lines; `ACTION:`/`TODO:` and table owners belong to the item-forms ticket and need to feed the same `resolve_owners`.
+- Ingest now parses all notes before resolving, to learn every attendee; ticket 02 (Malformed Notes) must keep that two-pass shape when it adds skipping.
+- Narrowing an Ambiguous Owner via Duplicate merge or `edit --owner` is left to tickets 06/07.

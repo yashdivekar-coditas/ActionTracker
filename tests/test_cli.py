@@ -183,7 +183,7 @@ def listed(ws, *args):
         (["--status", "done"], [2]),
         (["--status", "overdue"], [1]),  # due 09-09 is not overdue on 09-09
         (["--due-before", "2026-09-10"], [1, 2, 4]),
-        (["--needs-review"], [4]),
+        (["--needs-review"], [4, 5]),  # 5 is Unowned, flagged since ticket 05
         (["--owner", "Rahul", "--status", "open"], [3, 6]),
         (["--owner", "Priya", "--due-before", "2026-09-09"], [1]),
     ],
@@ -212,7 +212,17 @@ def test_json_lists_owners_sources_status_due_and_flags(filtered):
             "owners": [{"name": "Priya Shah", "confirmed": True}],
             "sources": [],
             "flags": [{"kind": "unknown-owner", "detail": "Priya Shah"}],
-        }
+        },
+        {
+            "id": 5,
+            "task": "Draft the agenda",
+            "status": "open",
+            "overdue": False,
+            "due": None,
+            "owners": [],
+            "sources": [],
+            "flags": [{"kind": "unowned", "detail": ""}],
+        },
     ]
 
 

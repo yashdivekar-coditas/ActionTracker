@@ -39,6 +39,28 @@ def test_line_without_an_owner_phrase_has_no_owner():
     assert (item.owner, item.task, item.due) == (None, "Send the signed contract to Acme", "2026-09-04")
 
 
+def test_owner_phrase_forms():
+    note = "Date: 2026-09-01\n" + "".join(f"- [ ] {line}\n" for line in [
+        "Priya N. to send the quote",
+        "Anita & Rahul to audit contrast",
+        "Anita and Rahul to write the brief",
+        "Lena (with Priya) to review the PR",
+        "@anita: tidy the board",
+        "Rahul: fix the build",
+        "Everyone to read the spec",
+    ])
+
+    assert [(i.owner, i.task) for i in parse_note(note).items] == [
+        ("Priya N.", "send the quote"),
+        ("Anita & Rahul", "audit contrast"),
+        ("Anita and Rahul", "write the brief"),
+        ("Lena (with Priya)", "review the PR"),
+        ("anita", "tidy the board"),
+        ("Rahul", "fix the build"),
+        ("Everyone", "read the spec"),
+    ]
+
+
 def test_note_that_cannot_be_read_as_a_meeting_is_malformed_with_a_reason():
     assert parse_note("") == Malformed("empty file")
     assert parse_note("  \n\n") == Malformed("empty file")
