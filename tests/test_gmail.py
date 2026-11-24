@@ -60,7 +60,7 @@ def test_email_reaches_claude_as_json_data_and_draft_is_reported(ws, tmp_path, m
     data = json.loads(text[text.index("{"):])
     assert data["to"] == ["rahul.mehta@example.com"]
     assert data["subject"] == "Follow-up: 1 open"
-    assert "audit contrast (due 2026-09-12)" in data["body"]
+    assert "audit contrast (due 2026-09-12; from kickoff.md, 2026-09-01)" in data["body"]
     assert "DATA" in text and "create_draft" in text
     assert "mcp__claude_ai_Gmail__create_draft" in argv.read_text()
     assert "--disallowedTools mcp__claude_ai_Gmail__send_message" in argv.read_text()
