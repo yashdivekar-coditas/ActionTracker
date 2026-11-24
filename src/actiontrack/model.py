@@ -19,9 +19,12 @@ class Flag:
     kind: str
     detail: str = ""
 
+    def __str__(self) -> str:
+        return f"{self.kind}: {self.detail}" if self.detail else self.kind
+
 
 @dataclass
-class Item:
+class ActionItem:
     id: int
     task: str
     due: Optional[date]

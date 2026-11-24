@@ -29,3 +29,11 @@ def test_clean_note_yields_meeting_date_attendees_and_action_items():
         ("Priya", "send the revised quote to Acme", "2026-09-08", False),
         ("Rahul", "set up the staging environment", None, True),
     ]
+
+
+def test_line_without_an_owner_phrase_has_no_owner():
+    note = "Date: 2026-09-01\n- [ ] Send the signed contract to Acme by 2026-09-04\n"
+
+    (item,) = parse_note(note).items
+
+    assert (item.owner, item.task, item.due) == (None, "Send the signed contract to Acme", "2026-09-04")

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from actiontrack.ingest import ingest_folder
-from actiontrack.model import Item
+from actiontrack.model import ActionItem
 from actiontrack.people import PeopleError, load_people
 from actiontrack.store import Store
 
@@ -43,23 +43,26 @@ def _list(args, store: Store, people) -> int:
     return EXIT_OK
 
 
-def _table(items: List[Item], with_review: bool) -> str:
+def _table(items: List[ActionItem], with_review: bool) -> str:
     header = ["ID", "STATUS", "DUE", "OWNER", "TASK"] + (["REVIEW"] if with_review else [])
-    rows = [header] + [
-        [
-            str(item.id),
-            item.status,
-            item.due.isoformat() if item.due else "-",
-            ", ".join(o.name for o in item.owners) or "-",
-            item.task,
-        ]
-        + ([", ".join(f"{f.kind}: {f.detail}" if f.detail else f.kind for f in item.flags)] if with_review else [])
-        for item in items
-    ]
+    rows = [header] + [_row(item, with_review) for item in items]
     widths = [max(len(row[col]) for row in rows) for col in range(len(header))]
     return "\n".join(
         "  ".join(cell.ljust(width) for cell, width in zip(row, widths)).rstrip() for row in rows
     )
+
+
+def _row(item: ActionItem, with_review: bool) -> List[str]:
+    row = [
+        str(item.id),
+        item.status,
+        item.due.isoformat() if item.due else "-",
+        ", ".join(owner.name for owner in item.owners) or "-",
+        item.task,
+    ]
+    if with_review:
+        row.append(", ".join(str(flag) for flag in item.flags))
+    return row
 
 
 def _parser() -> argparse.ArgumentParser:

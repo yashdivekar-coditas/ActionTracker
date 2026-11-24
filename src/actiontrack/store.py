@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable, List, Optional
 
-from actiontrack.model import Flag, Item, Owner
+from actiontrack.model import ActionItem, Flag, Owner
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
@@ -67,12 +67,12 @@ class Store:
         )
         return item_id
 
-    def items(self, needs_review: bool = False) -> List[Item]:
+    def items(self, needs_review: bool = False) -> List[ActionItem]:
         sql = "SELECT id, task, due, status FROM items"
         if needs_review:
             sql += " WHERE id IN (SELECT item_id FROM flags)"
         items = {
-            row[0]: Item(row[0], row[1], date.fromisoformat(row[2]) if row[2] else None, row[3])
+            row[0]: ActionItem(row[0], row[1], date.fromisoformat(row[2]) if row[2] else None, row[3])
             for row in self._db.execute(sql + " ORDER BY id")
         }
         for item_id, name, confirmed in self._db.execute(

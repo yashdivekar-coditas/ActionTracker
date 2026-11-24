@@ -18,12 +18,12 @@ def resolve_owners(
 ) -> Resolution:
     if not phrase:
         return Resolution()
-    name = _match(phrase, attendees) or _match(phrase, people) or phrase.strip()
+    name = _unique_name_match(phrase, attendees) or _unique_name_match(phrase, people) or phrase.strip()
     flags = [] if name in people else [Flag("unknown-owner", name)]
     return Resolution(owners=[Owner(name)], flags=flags)
 
 
-def _match(phrase: str, names: Iterable[str]) -> Optional[str]:
+def _unique_name_match(phrase: str, names: Iterable[str]) -> Optional[str]:
     wanted = phrase.strip().casefold()
     matches = [n for n in names if wanted == n.casefold() or n.casefold().split()[:1] == [wanted]]
     return matches[0] if len(matches) == 1 else None
