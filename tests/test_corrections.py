@@ -152,3 +152,28 @@ def test_edit_with_nothing_to_change_or_an_invalid_date_is_refused(ws):  # noqa:
 
     assert ws.run("edit", "1")[0] == 2
     assert ws.run("edit", "1", "--due", "soon")[0] == 2
+
+
+def test_edit_owner_with_a_name_outside_the_directory_is_flagged_unknown_and_a_known_name_clears_it(ws):  # noqa: F811
+    ws.directory(PEOPLE)
+    ws.note("a.md", meeting("2026-09-01", "Priya Nair, Rahul Mehta", "[ ] Someone to book a room"))
+    ws.ingest()
+
+    ws.run("edit", "1", "--owner", "Zed Stranger")
+
+    assert [(f["kind"], f["detail"]) for f in by_id(ws, 1)["flags"]] == [("unknown-owner", "Zed Stranger")]
+
+    ws.run("edit", "1", "--owner", "Priya Nair")
+
+    assert by_id(ws, 1)["flags"] == []
+
+
+def test_done_items_leave_the_review_queue_and_the_summary_count(ws):  # noqa: F811
+    ws.directory(PEOPLE)
+    ws.note("a.md", meeting("2026-09-01", "Rahul Mehta", "[ ] Someone to book a room", "[ ] Someone to order lunch"))
+    ws.ingest()
+
+    ws.run("done", "1")
+
+    assert [i["id"] for i in listed(ws, "--needs-review")] == [2]
+    assert "1 need review" in ws.ingest()[1]

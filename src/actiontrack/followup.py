@@ -6,7 +6,7 @@ from datetime import date
 from typing import Iterable, List, Mapping, Optional, Tuple
 
 from actiontrack.model import ActionItem
-from actiontrack.store import matches_name
+from actiontrack.owners import matches_name
 
 CONFIRM_HEADING = "Can you confirm whether this is yours?"
 
@@ -33,14 +33,9 @@ def format_email(email: Email) -> str:
     return f"To: {email.to}\nSubject: {email.subject}\n\n{email.body}"
 
 
-def _sources(item: ActionItem) -> List[str]:
-    """Source meetings of an item. Ticket 06 stores Sources; return their labels here."""
-    return [str(source) for source in getattr(item, "sources", [])]
-
-
 def _line(item: ActionItem) -> str:
     due = f"due {item.due.isoformat()}" if item.due else "no due date"
-    sources = _sources(item)
+    sources = [str(source) for source in item.sources]
     detail = f"{due}; from {', '.join(sources)}" if sources else due
     return f"- {item.task} ({detail})"
 
@@ -56,7 +51,7 @@ def compose(owner: str, to: str, items: Iterable[ActionItem], today: date) -> Op
             continue
         if not mine[0].confirmed:
             confirm.append(item)
-        elif item.due is not None and item.due < today:
+        elif item.is_overdue(today):
             overdue.append(item)
         else:
             open_.append(item)

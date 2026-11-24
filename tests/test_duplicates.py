@@ -140,3 +140,14 @@ def test_new_note_adds_only_its_items_and_a_changed_note_merges_its_new_lines(ws
         (3, "write the report", "open", None),
     ]
     assert len(items[0]["sources"]) == 2
+
+
+def test_two_unowned_items_never_merge_even_with_identical_tasks(ws):  # noqa: F811
+    ws.directory(PEOPLE)
+    ws.note("a.md", meeting("2026-09-01", "Rahul Mehta", "[ ] Someone to book the venue"))
+    ws.note("b.md", meeting("2026-09-08", "Rahul Mehta", "[ ] Someone to book the venue"))
+
+    _, out, _ = ws.ingest()
+
+    assert out.strip() == "2 notes read, 0 skipped, 2 new items, 0 merged, 2 need review"
+    assert [i["id"] for i in listed(ws)] == [1, 2]

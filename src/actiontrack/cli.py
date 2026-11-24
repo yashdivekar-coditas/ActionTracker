@@ -31,7 +31,7 @@ def main(argv: Optional[Sequence[str]] = None, sink: Optional[DraftSink] = None)
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     with Store(args.db) as store:
-        args.sink = sink or ClaudeSink()
+        args.sink = sink
         return args.command(args, store, people)
 
 
@@ -39,7 +39,7 @@ def _ingest(args, store: Store, people) -> int:
     if not args.folder.is_dir():
         print(f"error: {args.folder} is not a folder", file=sys.stderr)
         return EXIT_ERROR
-    report = ingest_folder(args.folder, store, people)
+    report = ingest_folder(args.folder, store, people, date.today())
     for name, reason in report.skipped:
         print(f"skipped {name}: {reason}", file=sys.stderr)
     print(
@@ -53,11 +53,11 @@ def _ingest(args, store: Store, people) -> int:
 def _list(args, store: Store, people) -> int:
     today = args.today or date.today()
     items = store.items(
+        today,
         needs_review=args.needs_review,
         owner=args.owner,
         status=args.status,
         due_before=args.due_before,
-        today=today,
     )
     if args.json:
         print(json.dumps([_as_dict(item, today) for item in items], indent=2))
@@ -71,7 +71,7 @@ def _correct(action):
 
     def command(args, store: Store, people) -> int:
         try:
-            item = action(args, store)
+            item = action(args, store, people)
         except UsageError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_USAGE
@@ -86,7 +86,7 @@ def _correct(action):
 
 def _followup(args, store: Store, people) -> int:
     today = args.today or date.today()
-    emails, skipped = compose_all(store.items(status="open", today=today), people, today, args.owner)
+    emails, skipped = compose_all(store.items(today, status="open"), people, today, args.owner)
     for name in skipped:
         print(f"skipped {name}: no email address in the people directory", file=sys.stderr)
     if not emails:
@@ -105,11 +105,17 @@ def _followup(args, store: Store, people) -> int:
         if answer.strip().casefold() not in ("y", "yes"):
             print("nothing created")
             return EXIT_OK
+    sink = args.sink or ClaudeSink()  # built only when a real draft is about to be made
+    names = {address: name for name, address in people.items()}
+    done = 0
     try:
         for email in emails:
-            args.sink.create_draft(email)
+            sink.create_draft(email)
+            done += 1
     except DraftError as exc:
+        label = lambda batch: ", ".join(names.get(e.to, e.to) for e in batch) or "none"
         print(f"error: {exc}", file=sys.stderr)
+        print(f"drafts already created: {label(emails[:done])}; not created: {label(emails[done:])}", file=sys.stderr)
         return EXIT_ERROR
     print(f"Created {len(emails)} drafts.")
     return EXIT_OK
@@ -120,7 +126,7 @@ def _as_dict(item: ActionItem, today: date) -> dict:
         "id": item.id,
         "task": item.task,
         "status": item.status,
-        "overdue": item.status == "open" and item.due is not None and item.due < today,
+        "overdue": item.is_overdue(today),
         "due": item.due.isoformat() if item.due else None,
         "owners": [{"name": o.name, "confirmed": o.confirmed} for o in item.owners],
         "sources": [
@@ -187,19 +193,19 @@ def _parser() -> argparse.ArgumentParser:
 
     done = commands.add_parser("done", parents=[common], help="mark an item Done")
     done.add_argument("id", type=int)
-    done.set_defaults(command=_correct(lambda args, store: mark_done(store, args.id)))
+    done.set_defaults(command=_correct(lambda args, store, people: mark_done(store, args.id)))
 
     edit = commands.add_parser("edit", parents=[common], help="correct an item's owner, due date or task")
     edit.add_argument("id", type=int)
     edit.add_argument("--owner", action="append", help="full name; repeat for an Owner Group")
     edit.add_argument("--due", type=_date, metavar="DATE", help="YYYY-MM-DD")
     edit.add_argument("--task", help="replacement task text")
-    edit.set_defaults(command=_correct(lambda args, store: edit_item(store, args.id, args.owner or (), args.due, args.task)))
+    edit.set_defaults(command=_correct(lambda args, store, people: edit_item(store, args.id, args.owner or (), args.due, args.task, people)))
 
     merge = commands.add_parser("merge", parents=[common], help="fold item ID into another item")
     merge.add_argument("id", type=int)
     merge.add_argument("into", type=int)
-    merge.set_defaults(command=_correct(lambda args, store: merge_items(store, args.id, args.into)))
+    merge.set_defaults(command=_correct(lambda args, store, people: merge_items(store, args.id, args.into)))
 
     followup = commands.add_parser("followup", parents=[common], help="compose follow-up emails and save them as Gmail drafts")
     followup.add_argument("owner", nargs="?", help="only this owner (first name or full name)")

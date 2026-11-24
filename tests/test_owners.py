@@ -132,3 +132,9 @@ def test_people_directory_is_not_consulted_when_the_note_lists_attendees(ws):  #
     rows = listed(ws, "Priya Nair", "Anita to audit contrast")
 
     assert rows == [("Anita", "audit contrast")]
+
+
+def test_ambiguous_candidates_are_listed_sorted_by_name_whatever_the_attendee_order(ws):  # noqa: F811
+    assert listed(ws, "Priya Shah, Priya Nair", "Priya to send the quote") == [
+        ("Priya Nair (unconfirmed), Priya Shah (unconfirmed)", "send the quote")
+    ]

@@ -12,6 +12,14 @@ class Owner:
     confirmed: bool = True
 
 
+# The kinds of review Flag, named once; the Store compares against them too.
+UNOWNED = "unowned"
+AMBIGUOUS_OWNER = "ambiguous-owner"
+UNKNOWN_OWNER = "unknown-owner"
+UNRESOLVED_DUE = "unresolved-due"
+POSSIBLE_DUPLICATE = "possible-duplicate"
+
+
 @dataclass(frozen=True)
 class Flag:
     """Why an Action Item Needs Review."""
@@ -47,3 +55,7 @@ class ActionItem:
     sources: List[Source] = field(default_factory=list)
     edited: List[str] = field(default_factory=list)  # fields a human set (owner, due, task); ingest leaves them alone
     aliases: List[str] = field(default_factory=list)  # earlier wordings (merged-away or pre-edit) that still match this item
+
+    def is_overdue(self, today: date) -> bool:
+        """Overdue is derived, never stored: Open and due before today."""
+        return self.status == "open" and self.due is not None and self.due < today

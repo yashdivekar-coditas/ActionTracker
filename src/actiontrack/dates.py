@@ -14,7 +14,7 @@ _PREFIX = rf"(?:{_WEEKDAY},?\s+)?"
 _MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 _WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
-_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
+_ISO = re.compile(r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})")
 _WEEKDAY_ONLY = re.compile(rf"(?:next\s+)?(?P<day>{_WEEKDAY})")
 _IN_N = re.compile(r"in\s+(?P<n>\d+)\s+(?P<unit>day|week)s?")
 _MID = re.compile(rf"mid[-\s]{_MONTH}")
@@ -24,7 +24,7 @@ _MONTH_DAY = re.compile(rf"{_PREFIX}{_MONTH}\s+(?P<day>\d{{1,2}}){_ORDINAL}(?:,?
 _SLASH = re.compile(r"(?P<day>\d{1,2})/(?P<month>\d{1,2})(?:/(?P<year>\d{4}))?")
 
 # A yearless date further back than this is taken to mean next year.
-_ROLL_AFTER = timedelta(days=61)
+_ROLL_AFTER = timedelta(days=31)
 
 
 def resolve_due(phrase: Optional[str], meeting_date: date) -> Optional[date]:
@@ -47,8 +47,8 @@ def _resolve(text: str, meeting: date) -> Optional[date]:
         return meeting + timedelta(days=1)
     if text == "next month":
         return _add_months(meeting, 1)
-    if _ISO.fullmatch(text):
-        return date.fromisoformat(text)
+    if m := _ISO.fullmatch(text):
+        return _dated(int(m["month"]), int(m["day"]), m["year"], meeting)
     if m := _WEEKDAY_ONLY.fullmatch(text):
         ahead = (_WEEKDAYS.index(m["day"][:3]) - meeting.weekday()) % 7
         return meeting + timedelta(days=ahead or 7)
@@ -62,6 +62,20 @@ def _resolve(text: str, meeting: date) -> Optional[date]:
         return _dated(_month_number(m["month"]), int(m["day"]), m["year"], meeting)
     if m := _SLASH.fullmatch(text):  # day-first
         return _dated(int(m["month"]), int(m["day"]), m["year"], meeting)
+    return None
+
+
+def parse_date(value: str) -> Optional[date]:
+    """A full calendar date as written in a note header: ISO, `9 September 2026`, `Sep 9, 2026` or day-first
+    `09/09/2026`, with an optional weekday. A date without a year is not a date here."""
+    text = re.sub(r"^" + _PREFIX, "", re.sub(r"\s+", " ", value.strip().lower()))
+    try:
+        for pattern in (_ISO, _DAY_MONTH, _MONTH_DAY, _SLASH):
+            if (m := pattern.fullmatch(text)) and m["year"]:
+                month = int(m["month"]) if m["month"].isdigit() else _month_number(m["month"])
+                return date(int(m["year"]), month, int(m["day"]))
+    except ValueError:  # impossible date such as 30 February
+        pass
     return None
 
 
