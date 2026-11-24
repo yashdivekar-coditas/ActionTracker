@@ -79,3 +79,16 @@ def test_bom_crlf_and_typographic_punctuation_parse_like_plain_text():
     assert [(i.owner, i.task, i.due) for i in meeting.items] == [
         ("Priya", "send the \u201cquote\u201d \u2013 now", "2026-09-08")
     ]
+
+
+def test_due_phrase_is_split_off_the_task_including_a_before_phrase_and_dash_separator():
+    note = (
+        "Date: 2026-09-01\n"
+        "- [ ] Sam to snapshot the production DB before cutover\n"
+        "- [ ] Priya to send the quote — by end of next week\n"
+    )
+
+    first, second = parse_note(note).items
+
+    assert (first.task, first.due) == ("snapshot the production DB", "before cutover")
+    assert (second.task, second.due) == ("send the quote", "end of next week")

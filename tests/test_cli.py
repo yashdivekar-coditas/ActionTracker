@@ -234,3 +234,23 @@ def test_invalid_filter_values_are_a_usage_error(filtered, args):
 
     assert code == 2
     assert "usage" in err
+
+
+def test_unresolved_due_phrase_leaves_no_due_date_and_is_flagged_with_the_phrase(ws):
+    ws.directory(EVERYONE)
+    ws.note(
+        "cutover.md",
+        "Date: 2026-09-01\nAttendees: Priya Nair, Rahul Mehta\n"
+        "- [ ] Rahul to snapshot the production DB before cutover\n"
+        "- [ ] Priya to draft the test plan by end of next week\n",
+    )
+
+    assert ws.ingest()[1].strip() == "1 notes read, 0 skipped, 2 new items, 0 merged, 1 need review"
+    _, out, _ = ws.run("list", "--needs-review")
+
+    assert out.splitlines() == [
+        "ID  STATUS  DUE  OWNER        TASK                        REVIEW",
+        "1   open    -    Rahul Mehta  snapshot the production DB  unresolved-due: before cutover",
+    ]
+    _, out, _ = ws.run("list")
+    assert "2026-09-11  Priya Nair   draft the test plan" in out

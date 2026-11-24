@@ -4,11 +4,17 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Every phrasing listed above resolves to the hand-computed date for at least two different Meeting Dates, including a Friday meeting saying "by Friday"
-- [ ] A December meeting saying "by 5 Jan" resolves to January of the following year
-- [ ] The stored task no longer contains the due phrase
-- [ ] "before cutover" gives no Due Date, and the item appears in `list --needs-review` as `unresolved-due` with the phrase
+- [x] Every phrasing listed above resolves to the hand-computed date for at least two different Meeting Dates, including a Friday meeting saying "by Friday"
+- [x] A December meeting saying "by 5 Jan" resolves to January of the following year
+- [x] The stored task no longer contains the due phrase
+- [x] "before cutover" gives no Due Date, and the item appears in `list --needs-review` as `unresolved-due` with the phrase
 
 Spec: `.scratch/actiontrack/spec.md`
+
+## Comments
+
+- "next month" is resolved to the same day of the next month (clamped to its length), "end of week" to the Friday on or after the meeting (a weekend meeting looks to the coming Friday), "mid-<month>" to the 15th; the ticket left these open.
+- "before ..." phrases are never resolved (kept whole as the `unresolved-due` detail). Any " before " in a task line is therefore treated as a due phrase; a false positive only costs a review flag.
+- Deferred: "due <date>" wording ("results due 15 October") and table Due columns are not extracted as due phrases (note grammar, ticket 03). Weekday/date mismatches ("Wed 16 Sep" when it is not Wednesday) trust the date.
