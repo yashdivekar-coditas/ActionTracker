@@ -23,6 +23,19 @@ class Flag:
         return f"{self.kind}: {self.detail}" if self.detail else self.kind
 
 
+@dataclass(frozen=True)
+class Source:
+    """A Meeting Note an Action Item was seen in; `note` is the file name inside the ingested folder."""
+
+    note: str
+    line: int
+    date: date
+    title: str = ""
+
+    def __str__(self) -> str:  # the label Follow-ups show, e.g. "Quote portal weekly, 2026-09-08"
+        return f"{self.title or self.note}, {self.date.isoformat()}"
+
+
 @dataclass
 class ActionItem:
     id: int
@@ -31,3 +44,4 @@ class ActionItem:
     status: str
     owners: List[Owner] = field(default_factory=list)
     flags: List[Flag] = field(default_factory=list)
+    sources: List[Source] = field(default_factory=list)

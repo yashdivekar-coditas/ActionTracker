@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable, List, Optional
 
-from actiontrack.model import ActionItem, Flag, Owner
+from actiontrack.model import ActionItem, Flag, Owner, Source
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
@@ -26,6 +26,20 @@ CREATE TABLE IF NOT EXISTS flags (
     kind    TEXT NOT NULL,
     detail  TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (item_id, kind)
+);
+-- `key` identifies the line as written (owner, task, due phrase), so re-reading a note adds nothing twice
+CREATE TABLE IF NOT EXISTS sources (
+    item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    note    TEXT NOT NULL,
+    key     TEXT NOT NULL,
+    line    INTEGER NOT NULL,
+    date    TEXT NOT NULL,
+    title   TEXT NOT NULL,
+    PRIMARY KEY (note, key)
+);
+CREATE TABLE IF NOT EXISTS notes (
+    name TEXT PRIMARY KEY,
+    hash TEXT NOT NULL
 );
 """
 
@@ -51,6 +65,8 @@ class Store:
         done: bool,
         owners: Iterable[Owner],
         flags: Iterable[Flag],
+        source: Source,
+        key: str,
     ) -> int:
         cur = self._db.execute(
             "INSERT INTO items (task, due, status) VALUES (?, ?, ?)",
@@ -65,7 +81,49 @@ class Store:
             "INSERT OR REPLACE INTO flags (item_id, kind, detail) VALUES (?, ?, ?)",
             [(item_id, f.kind, f.detail) for f in flags],
         )
+        self.add_source(item_id, source, key)
         return item_id
+
+    def add_source(self, item_id: int, source: Source, key: str) -> None:
+        self._db.execute(
+            "INSERT INTO sources (item_id, note, key, line, date, title) VALUES (?, ?, ?, ?, ?, ?)",
+            (item_id, source.note, key, source.line, source.date.isoformat(), source.title),
+        )
+
+    def source_item(self, note: str, key: str) -> Optional[int]:
+        """The item a line of a note already belongs to, or None when the line is new."""
+        row = self._db.execute("SELECT item_id FROM sources WHERE note = ? AND key = ?", (note, key)).fetchone()
+        return row[0] if row else None
+
+    def refresh_source(self, source: Source, key: str) -> None:
+        self._db.execute(
+            "UPDATE sources SET line = ?, date = ?, title = ? WHERE note = ? AND key = ?",
+            (source.line, source.date.isoformat(), source.title, source.note, key),
+        )
+
+    def save_item(self, item: ActionItem) -> None:
+        """Write back an item's due date, status, owners and flags (its task and Sources are not touched)."""
+        self._db.execute(
+            "UPDATE items SET due = ?, status = ? WHERE id = ?",
+            (item.due.isoformat() if item.due else None, item.status, item.id),
+        )
+        self._db.execute("DELETE FROM item_owners WHERE item_id = ?", (item.id,))
+        self._db.execute("DELETE FROM flags WHERE item_id = ?", (item.id,))
+        self._db.executemany(
+            "INSERT INTO item_owners (item_id, name, confirmed) VALUES (?, ?, ?)",
+            [(item.id, o.name, int(o.confirmed)) for o in item.owners],
+        )
+        self._db.executemany(
+            "INSERT INTO flags (item_id, kind, detail) VALUES (?, ?, ?)",
+            [(item.id, f.kind, f.detail) for f in item.flags],
+        )
+
+    def note_hash(self, name: str) -> Optional[str]:
+        row = self._db.execute("SELECT hash FROM notes WHERE name = ?", (name,)).fetchone()
+        return row[0] if row else None
+
+    def set_note_hash(self, name: str, digest: str) -> None:
+        self._db.execute("INSERT OR REPLACE INTO notes (name, hash) VALUES (?, ?)", (name, digest))
 
     def items(
         self,
@@ -103,6 +161,11 @@ class Store:
         ):
             if item_id in items:
                 items[item_id].flags.append(Flag(kind, detail))
+        for item_id, note, line, day, title in self._db.execute(
+            "SELECT item_id, note, line, date, title FROM sources ORDER BY date, note, line"
+        ):
+            if item_id in items:
+                items[item_id].sources.append(Source(note, line, date.fromisoformat(day), title))
         return list(items.values())
 
 
