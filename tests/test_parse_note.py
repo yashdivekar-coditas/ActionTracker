@@ -37,3 +37,25 @@ def test_line_without_an_owner_phrase_has_no_owner():
     (item,) = parse_note(note).items
 
     assert (item.owner, item.task, item.due) == (None, "Send the signed contract to Acme", "2026-09-04")
+
+
+def test_owner_phrase_forms():
+    note = "Date: 2026-09-01\n" + "".join(f"- [ ] {line}\n" for line in [
+        "Priya N. to send the quote",
+        "Anita & Rahul to audit contrast",
+        "Anita and Rahul to write the brief",
+        "Lena (with Priya) to review the PR",
+        "@anita: tidy the board",
+        "Rahul: fix the build",
+        "Everyone to read the spec",
+    ])
+
+    assert [(i.owner, i.task) for i in parse_note(note).items] == [
+        ("Priya N.", "send the quote"),
+        ("Anita & Rahul", "audit contrast"),
+        ("Anita and Rahul", "write the brief"),
+        ("Lena (with Priya)", "review the PR"),
+        ("anita", "tidy the board"),
+        ("Rahul", "fix the build"),
+        ("Everyone", "read the spec"),
+    ]
