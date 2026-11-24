@@ -175,7 +175,8 @@ class Store:
         return [
             item
             for item in self._all_items(needs_review)
-            if (owner is None or _owned_by(item, owner))
+            if (not needs_review or item.status == "open")  # Done items need no review
+            and (owner is None or _owned_by(item, owner))
             and (status is None or _has_status(item, status, today))
             and (due_before is None or (item.due is not None and item.due < due_before))
         ]

@@ -71,7 +71,7 @@ def test_ingest_then_list_shows_each_action_item_with_its_owner_and_due_date(ws)
 
 def test_owner_missing_from_people_directory_is_flagged_for_review(ws):
     ws.directory({"Priya Nair": "priya@example.com"})
-    ws.note("kickoff.md", KICKOFF)
+    ws.note("kickoff.md", KICKOFF.replace("[x] Rahul", "[ ] Rahul"))  # an Open item: Done ones need no review
 
     code, out, _ = ws.ingest()
     assert code == 0
@@ -81,7 +81,7 @@ def test_owner_missing_from_people_directory_is_flagged_for_review(ws):
     assert code == 0
     assert out.splitlines() == [
         "ID  STATUS  DUE  OWNER        TASK                            REVIEW",
-        "2   done    -    Rahul Mehta  set up the staging environment  unknown-owner: Rahul Mehta",
+        "2   open    -    Rahul Mehta  set up the staging environment  unknown-owner: Rahul Mehta",
     ]
 
 
