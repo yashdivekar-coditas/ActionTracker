@@ -36,7 +36,7 @@ def best_match(
     for item in items:
         theirs = {o.name for o in item.owners}
         if (owners & theirs) or not (owners or theirs):
-            score = similarity(task, item.task)
+            score = max(similarity(task, wording) for wording in [item.task] + item.aliases)
             if best is None or score > best[1]:
                 best = (item, score)
     return best

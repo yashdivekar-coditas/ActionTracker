@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import List, Optional, Sequence
 
+from actiontrack.corrections import CorrectionError, UsageError, edit_item, mark_done, merge_items
 from actiontrack.followup import DraftError, DraftSink, compose_all, format_email
 from actiontrack.gmail import ClaudeSink
 from actiontrack.ingest import ingest_folder
@@ -15,7 +16,7 @@ from actiontrack.model import ActionItem, Owner
 from actiontrack.people import PeopleError, load_people
 from actiontrack.store import Store
 
-EXIT_OK, EXIT_ERROR = 0, 1
+EXIT_OK, EXIT_ERROR, EXIT_USAGE = 0, 1, 2
 
 
 def main(argv: Optional[Sequence[str]] = None, sink: Optional[DraftSink] = None) -> int:
@@ -63,6 +64,24 @@ def _list(args, store: Store, people) -> int:
     else:
         print(_table(items, with_review=args.needs_review))
     return EXIT_OK
+
+
+def _correct(action):
+    """Wrap a correction command: print the item it left behind, or the error (exit 1)."""
+
+    def command(args, store: Store, people) -> int:
+        try:
+            item = action(args, store)
+        except UsageError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_USAGE
+        except CorrectionError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        print(f"#{item.id} {item.status}, due {item.due or '-'}, " + ", ".join(_owner_cell(o) for o in item.owners) + f": {item.task}")
+        return EXIT_OK
+
+    return command
 
 
 def _followup(args, store: Store, people) -> int:
@@ -165,6 +184,22 @@ def _parser() -> argparse.ArgumentParser:
     list_.add_argument("--today", type=_date, metavar="DATE", help="pin today's date (YYYY-MM-DD)")
     list_.add_argument("--json", action="store_true", help="machine-readable output")
     list_.set_defaults(command=_list)
+
+    done = commands.add_parser("done", parents=[common], help="mark an item Done")
+    done.add_argument("id", type=int)
+    done.set_defaults(command=_correct(lambda args, store: mark_done(store, args.id)))
+
+    edit = commands.add_parser("edit", parents=[common], help="correct an item's owner, due date or task")
+    edit.add_argument("id", type=int)
+    edit.add_argument("--owner", action="append", help="full name; repeat for an Owner Group")
+    edit.add_argument("--due", type=_date, metavar="DATE", help="YYYY-MM-DD")
+    edit.add_argument("--task", help="replacement task text")
+    edit.set_defaults(command=_correct(lambda args, store: edit_item(store, args.id, args.owner or (), args.due, args.task)))
+
+    merge = commands.add_parser("merge", parents=[common], help="fold item ID into another item")
+    merge.add_argument("id", type=int)
+    merge.add_argument("into", type=int)
+    merge.set_defaults(command=_correct(lambda args, store: merge_items(store, args.id, args.into)))
 
     followup = commands.add_parser("followup", parents=[common], help="compose follow-up emails and save them as Gmail drafts")
     followup.add_argument("owner", nargs="?", help="only this owner (first name or full name)")
