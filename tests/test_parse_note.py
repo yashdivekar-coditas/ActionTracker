@@ -37,3 +37,16 @@ def test_line_without_an_owner_phrase_has_no_owner():
     (item,) = parse_note(note).items
 
     assert (item.owner, item.task, item.due) == (None, "Send the signed contract to Acme", "2026-09-04")
+
+
+def test_due_phrase_is_split_off_the_task_including_a_before_phrase_and_dash_separator():
+    note = (
+        "Date: 2026-09-01\n"
+        "- [ ] Sam to snapshot the production DB before cutover\n"
+        "- [ ] Priya to send the quote — by end of next week\n"
+    )
+
+    first, second = parse_note(note).items
+
+    assert (first.task, first.due) == ("snapshot the production DB", "before cutover")
+    assert (second.task, second.due) == ("send the quote", "end of next week")

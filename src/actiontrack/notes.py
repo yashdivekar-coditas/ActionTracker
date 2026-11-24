@@ -15,8 +15,9 @@ _DATE = re.compile(r"^Date:\s*(?P<value>.+?)\s*$", re.IGNORECASE)
 _ATTENDEES = re.compile(r"^Attendees:\s*(?P<value>.*?)\s*$", re.IGNORECASE)
 _CHECKBOX = re.compile(r"^\s*-\s*\[(?P<mark>[ xX])\]\s*(?P<text>.+?)\s*$")
 _OWNER_SPLIT = re.compile(r"\s+to\s+")
-# Only the last " by " starts the due phrase, so "sorted by date by Friday" keeps its task intact.
-_DUE_SPLIT = re.compile(r"\s+by\s+(?!.*\s+by\s+)")
+# The last " by " or " before " starts the due phrase, so "sorted by date by Friday" keeps its task
+# intact. "by" is dropped; "before" stays in the phrase, which the date resolver then leaves unresolved.
+_DUE_SPLIT = re.compile(r"\s+(?:by\s+|(?=before\s))(?!.*\s+(?:by|before)\s)")
 # An owner phrase reads like a name: capitalised words or initials ("Priya", "Priya N.").
 _NAME_LIKE = re.compile(r"^[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*)*$")
 
@@ -67,7 +68,7 @@ def _item_line(text: str, done: bool, line: int) -> ItemLine:
     if before_due is None:
         due = None
     else:
-        task = before_due
+        task = before_due.rstrip(" \t,;:-\u2013\u2014")
     return ItemLine(owner=owner, task=task, due=due, done=done, line=line)
 
 
