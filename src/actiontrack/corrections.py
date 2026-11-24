@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional, Sequence
+from typing import Mapping, Optional, Sequence
 
-from actiontrack.model import ActionItem, Owner
+from actiontrack.model import ActionItem, Flag, Owner
 from actiontrack.store import Store
 
 # the review flags each corrected field settles
@@ -34,7 +34,12 @@ def mark_done(store: Store, item_id: int) -> ActionItem:
 
 
 def edit_item(
-    store: Store, item_id: int, owners: Sequence[str] = (), due: Optional[date] = None, task: Optional[str] = None
+    store: Store,
+    item_id: int,
+    owners: Sequence[str] = (),
+    due: Optional[date] = None,
+    task: Optional[str] = None,
+    people: Mapping[str, str] = {},
 ) -> ActionItem:
     item = _get(store, item_id)
     if not (owners or due or task is not None):
@@ -53,6 +58,9 @@ def edit_item(
     for field in changed:
         store.record_edit(item.id, field)
         item.flags = [f for f in item.flags if f.kind not in _CLEARS.get(field, ())]
+    unknown = [n for n in dict.fromkeys(names) if n not in people]
+    if unknown:  # a corrected Owner still has to be someone in the people directory
+        item.flags = sorted(item.flags + [Flag("unknown-owner", ", ".join(unknown))], key=lambda f: f.kind)
     store.save_item(item)
     return item
 
