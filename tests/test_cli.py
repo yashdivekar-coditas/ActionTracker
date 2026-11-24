@@ -33,6 +33,9 @@ class Workspace:
     def note(self, name: str, text: str) -> None:
         (self.notes / name).write_text(text, encoding="utf-8")
 
+    def raw_note(self, name: str, data: bytes) -> None:
+        (self.notes / name).write_bytes(data)
+
     def directory(self, people: dict) -> None:
         self.people.write_text(json.dumps(people), encoding="utf-8")
 
@@ -72,7 +75,7 @@ def test_owner_missing_from_people_directory_is_flagged_for_review(ws):
 
     code, out, _ = ws.ingest()
     assert code == 0
-    assert out.strip() == "1 notes read, 2 new items, 1 need review"
+    assert out.strip() == "1 notes read, 0 skipped, 2 new items, 0 merged, 1 need review"
 
     code, out, _ = ws.run("list", "--needs-review")
     assert code == 0
@@ -90,3 +93,53 @@ def test_unreadable_people_directory_is_a_clear_error(ws):
 
     assert code == 1
     assert "must map full names to email addresses" in err
+
+
+def test_malformed_notes_are_skipped_with_distinct_reasons_and_the_rest_still_ingest(ws):
+    ws.directory(EVERYONE)
+    ws.note("kickoff.md", KICKOFF)
+    ws.raw_note("empty.md", b"")
+    ws.raw_note("binary.md", b"\x00\x01\x02Date: 2026-09-01\n- [ ] Priya to x\n")
+    ws.raw_note("latin1.md", b"Date: 2026-09-01\n- [ ] Priya to caf\xe9\n")
+    ws.note("nodate.md", "# Meeting: Standup\n- [ ] Priya to send the quote\n")
+    ws.note("baddate.md", "Date: next Tuesday\n- [ ] Priya to send the quote\n")
+
+    code, out, err = ws.ingest()
+
+    assert code == 0
+    assert sorted(err.splitlines()) == [
+        "skipped baddate.md: no readable Meeting Date",
+        "skipped binary.md: binary or undecodable file",
+        "skipped empty.md: empty file",
+        "skipped latin1.md: binary or undecodable file",
+        "skipped nodate.md: no readable Meeting Date",
+    ]
+    assert out.strip() == "1 notes read, 5 skipped, 2 new items, 0 merged, 0 need review"
+    assert len(ws.run("list")[1].splitlines()) == 3  # header + the two kickoff items
+
+
+def test_non_markdown_files_are_ignored_and_not_reported(ws):
+    ws.directory(EVERYONE)
+    ws.note("kickoff.md", KICKOFF)
+    ws.note("draft.txt", KICKOFF)
+    ws.raw_note("photo.png", b"\x89PNG\x00")
+    (ws.notes / "folder.md").mkdir()
+
+    code, out, err = ws.ingest()
+
+    assert (code, err) == (0, "")
+    assert out.strip() == "1 notes read, 0 skipped, 2 new items, 0 merged, 0 need review"
+
+
+def test_note_with_bom_and_crlf_ingests_like_its_plain_equivalent(ws):
+    ws.directory(EVERYONE)
+    ws.raw_note("kickoff.md", b"\xef\xbb\xbf" + KICKOFF.replace("\n", "\r\n").encode("utf-8"))
+
+    code, out, err = ws.ingest()
+
+    assert (code, err) == (0, "")
+    assert ws.run("list")[1].splitlines() == [
+        "ID  STATUS  DUE         OWNER        TASK",
+        "1   open    2026-09-08  Priya Nair   send the revised quote to Acme",
+        "2   done    -           Rahul Mehta  set up the staging environment",
+    ]

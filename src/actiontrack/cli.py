@@ -30,9 +30,11 @@ def _ingest(args, store: Store, people) -> int:
         print(f"error: {args.folder} is not a folder", file=sys.stderr)
         return EXIT_ERROR
     report = ingest_folder(args.folder, store, people)
+    for name, reason in report.skipped:
+        print(f"skipped {name}: {reason}", file=sys.stderr)
     print(
-        f"{report.notes_read} notes read, {report.items_new} new items, "
-        f"{report.needs_review} need review"
+        f"{report.notes_read} notes read, {len(report.skipped)} skipped, {report.items_new} new items, "
+        f"0 merged, {report.needs_review} need review"  # merging arrives with ticket 06
     )
     return EXIT_OK
 
