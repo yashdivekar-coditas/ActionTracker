@@ -8,7 +8,8 @@ from datetime import date
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from actiontrack.followup import DraftError, DraftSink, PrintSink, compose_all, format_email
+from actiontrack.followup import DraftError, DraftSink, compose_all, format_email
+from actiontrack.gmail import ClaudeSink
 from actiontrack.ingest import ingest_folder
 from actiontrack.model import ActionItem, Owner
 from actiontrack.people import PeopleError, load_people
@@ -29,7 +30,7 @@ def main(argv: Optional[Sequence[str]] = None, sink: Optional[DraftSink] = None)
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     with Store(args.db) as store:
-        args.sink = sink or PrintSink()  # ticket 10 makes the Claude/Gmail adapter the default
+        args.sink = sink or ClaudeSink()
         return args.command(args, store, people)
 
 

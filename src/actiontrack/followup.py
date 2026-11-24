@@ -23,18 +23,10 @@ class Email:
 
 
 class DraftSink:
-    """Where composed Follow-ups go. The Claude/Gmail adapter (ticket 10) implements this."""
+    """Where composed Follow-ups go. `gmail.ClaudeSink` is the real one."""
 
     def create_draft(self, email: Email) -> str:
         raise NotImplementedError
-
-
-class PrintSink(DraftSink):
-    """Saves nothing; stands in until the Claude adapter exists."""
-
-    def create_draft(self, email: Email) -> str:
-        print(f"(printed only, not saved) draft for {email.to}")
-        return "printed"
 
 
 def format_email(email: Email) -> str:
