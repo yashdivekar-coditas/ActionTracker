@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from actiontrack.notes import Meeting, parse_note
+from actiontrack.notes import Malformed, Meeting, parse_note
 
 CLEAN_NOTE = """\
 # Meeting: Quote portal kickoff
@@ -58,4 +58,24 @@ def test_owner_phrase_forms():
         ("anita", "tidy the board"),
         ("Rahul", "fix the build"),
         ("Everyone", "read the spec"),
+    ]
+
+
+def test_note_that_cannot_be_read_as_a_meeting_is_malformed_with_a_reason():
+    assert parse_note("") == Malformed("empty file")
+    assert parse_note("  \n\n") == Malformed("empty file")
+    assert parse_note("Date: 2026-09-01\x00\n") == Malformed("binary or undecodable file")
+    assert parse_note("# Standup\n- [ ] Priya to x\n") == Malformed("no readable Meeting Date")
+    assert parse_note("Date: 2026-13-45\n") == Malformed("no readable Meeting Date")
+
+
+def test_bom_crlf_and_typographic_punctuation_parse_like_plain_text():
+    note = "\ufeff# Meeting: Kick\u2011off\r\nDate: 2026-09-01\r\nAttendees: Priya Nair\r\n- [ ] Priya to send the \u201cquote\u201d \u2013 now by 2026-09-08\r\n"
+
+    meeting = parse_note(note)
+
+    assert meeting.date == date(2026, 9, 1)
+    assert meeting.attendees == ["Priya Nair"]
+    assert [(i.owner, i.task, i.due) for i in meeting.items] == [
+        ("Priya", "send the \u201cquote\u201d \u2013 now", "2026-09-08")
     ]
