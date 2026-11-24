@@ -253,7 +253,7 @@ def test_json_lists_owners_sources_status_due_and_flags(filtered):
             "overdue": False,
             "due": "2026-09-09",
             "owners": [{"name": "Priya Shah", "confirmed": True}],
-            "sources": [],
+            "sources": [{"note": "planning.md", "line": 8, "date": "2026-09-01", "title": "Planning"}],
             "flags": [{"kind": "unknown-owner", "detail": "Priya Shah"}],
         },
         {
@@ -263,7 +263,7 @@ def test_json_lists_owners_sources_status_due_and_flags(filtered):
             "overdue": False,
             "due": None,
             "owners": [],
-            "sources": [],
+            "sources": [{"note": "planning.md", "line": 9, "date": "2026-09-01", "title": "Planning"}],
             "flags": [{"kind": "unowned", "detail": ""}],
         },
     ]

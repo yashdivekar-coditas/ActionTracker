@@ -43,7 +43,8 @@ def _ingest(args, store: Store, people) -> int:
         print(f"skipped {name}: {reason}", file=sys.stderr)
     print(
         f"{report.notes_read} notes read, {len(report.skipped)} skipped, {report.items_new} new items, "
-        f"0 merged, {report.needs_review} need review"  # merging arrives with ticket 06
+        f"{report.items_merged} merged, {report.needs_review} need review"
+        + (f", {report.notes_unchanged} unchanged" if report.notes_unchanged else "")
     )
     return EXIT_OK
 
@@ -103,7 +104,10 @@ def _as_dict(item: ActionItem, today: date) -> dict:
         "overdue": item.status == "open" and item.due is not None and item.due < today,
         "due": item.due.isoformat() if item.due else None,
         "owners": [{"name": o.name, "confirmed": o.confirmed} for o in item.owners],
-        "sources": [],  # ticket 06 stores Sources; list them here
+        "sources": [
+            {"note": s.note, "line": s.line, "date": s.date.isoformat(), "title": s.title}
+            for s in item.sources
+        ],
         "flags": [{"kind": f.kind, "detail": f.detail} for f in item.flags],
     }
 

@@ -70,14 +70,14 @@ def test_email_for_one_owner_lists_overdue_then_open_then_confirm_in_plain_text(
         "Here is where your action items stand.\n"
         "\n"
         "Overdue (1)\n"
-        "- send the revised quote to Acme (due 2026-09-08)\n"
+        "- send the revised quote to Acme (due 2026-09-08; from kickoff.md, 2026-09-01)\n"
         "\n"
         "Open (2)\n"
-        "- book the venue (due 2026-09-30)\n"
-        "- write the summary (no due date)\n"
+        "- book the venue (due 2026-09-30; from kickoff.md, 2026-09-01)\n"
+        "- write the summary (no due date; from kickoff.md, 2026-09-01)\n"
         "\n"
         "Can you confirm whether this is yours?\n"
-        "- review the contract (due 2026-09-20)\n"
+        "- review the contract (due 2026-09-20; from kickoff.md, 2026-09-01)\n"
         "\n"
         "Thanks\n"
     )
@@ -109,8 +109,8 @@ def test_group_item_goes_to_every_member_and_no_owner_means_one_email_each(ws):
         "priya.shah@example.com",
         "rahul.mehta@example.com",
     ]
-    assert "audit contrast (due 2026-09-12)" in sink.drafts[0].body
-    assert "audit contrast (due 2026-09-12)" in sink.drafts[3].body
+    assert "audit contrast (due 2026-09-12; from kickoff.md, 2026-09-01)" in sink.drafts[0].body
+    assert "audit contrast (due 2026-09-12; from kickoff.md, 2026-09-01)" in sink.drafts[3].body
     assert sink.drafts[3].subject == "Follow-up: 1 open"  # only the shared item; Done items are left out
 
 
